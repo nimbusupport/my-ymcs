@@ -1,0 +1,17 @@
+{
+  "name": "yealink_provision",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node --watch src/server.js",
+    "test": "node --test",
+    "check:ymcs": "node src/scripts/checkYmcsConnection.js",
+    "check:ymcs:models": "node src/scripts/checkYmcsConnection.js models",
+    "check:ymcs:device": "node src/scripts/checkYmcsConnection.js device-add"
+  },
+  "dependencies": {
+    "dotenv": "^17.2.3"
+  }
+}

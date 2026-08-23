@@ -1,0 +1,410 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>YMCS Device Console</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <section id="auth-loading" class="auth-loading">
+      <div class="auth-loading-card">
+        <div class="brand brand-compact">
+          <div class="brand-mark"></div>
+          <span>Phone</span>
+        </div>
+        <p>Loading admin console...</p>
+      </div>
+    </section>
+
+    <main id="login-shell" class="login-shell hidden">
+      <section class="login-visual">
+        <div class="login-visual-frame">
+          <img src="/image/login.png" alt="Yealink workspace and devices">
+        </div>
+      </section>
+
+      <section class="login-panel">
+        <div class="login-panel-inner">
+          <div class="login-brand-block">
+            <div class="login-brand-logo">Yealink</div>
+            <p>Management Cloud Service</p>
+          </div>
+
+          <form id="login-form" class="login-form" novalidate>
+            <label class="login-field">
+              <span>Username</span>
+              <input id="login-email" name="email" type="email" placeholder="Enter your Email" autocomplete="username" required>
+            </label>
+
+            <label class="login-field">
+              <span>Password</span>
+              <input id="login-password" name="password" type="password" placeholder="Enter your password" autocomplete="current-password" required>
+            </label>
+
+            <button id="login-submit" class="primary-button login-submit" type="submit">Sign In</button>
+          </form>
+
+          <section id="login-response" class="response hidden" aria-live="polite">
+            <div id="login-response-badge" class="response-badge">Pending</div>
+            <p id="login-response-message" class="response-message"></p>
+          </section>
+
+          <div class="login-footer">
+            <span>Allowed users only</span>
+            <span>Powered by Authentication</span>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <main id="app-shell" class="shell hidden">
+      <section class="workspace">
+        <aside class="sidebar">
+          <div class="brand">
+            <div class="brand-mark"></div>
+            <span>Phone</span>
+          </div>
+          <nav class="nav">
+            <button class="nav-link nav-link-active" type="button" data-view="device">Device</button>
+            <button class="nav-link" type="button" data-view="multiple">Multiple Devices</button>
+            <button class="nav-link" type="button" data-view="search">Search</button>
+            <button class="nav-link" type="button" data-view="configuration">Configuration</button>
+          </nav>
+          <div class="sidebar-card">
+            <strong>YMCS Service</strong>
+            <p>YMCS-Made By Zura.</p>
+          </div>
+        </aside>
+
+        <section class="table-view">
+          <header class="table-toolbar">
+            <div>
+              <div class="eyebrow">Enterprise</div>
+              <div id="workspace-title" class="site-pill">NIMBUSIP</div>
+            </div>
+            <div class="toolbar-actions">
+              <div id="session-user" class="session-user hidden"></div>
+              <button id="quick-add-button" class="primary-button" type="button">+ Add</button>
+              <button id="logout-button" class="secondary-button" type="button">Log Out</button>
+            </div>
+          </header>
+
+          <section id="device-workspace" class="workspace-panel">
+            <div class="hero-card">
+              <div>
+                <div class="eyebrow">Single Device Provisioning</div>
+                <h2>One device, one clean request.</h2>
+                <p>Add a phone to YMCS with the exact model and the right site assignment.</p>
+              </div>
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <span>Models</span>
+                  <strong id="model-count">0</strong>
+                </div>
+                <div class="hero-stat">
+                  <span>Sites</span>
+                  <strong id="site-count">0</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-card">
+              <div class="table-head table-head-wide">
+                <span>Name/MAC</span>
+                <span>Model</span>
+                <span>Status</span>
+                <span>Firmware Version</span>
+              </div>
+              <div class="table-row table-row-wide">
+                <span data-label="Name/MAC">205 / c4fc2284bb51</span>
+                <span data-label="Model">SIP-T43U</span>
+                <span data-label="Status" class="status-online">Online</span>
+                <span data-label="Firmware Version">108.86.0.153</span>
+              </div>
+              <div class="table-row table-row-wide">
+                <span data-label="Name/MAC">204 / c4fc2237d361</span>
+                <span data-label="Model">W70B</span>
+                <span data-label="Status" class="status-online">Online</span>
+                <span data-label="Firmware Version">146.85.0.59</span>
+              </div>
+              <div class="table-row table-row-wide">
+                <span data-label="Name/MAC">203 / 44dbd279d033</span>
+                <span data-label="Model">SIP-T44U</span>
+                <span data-label="Status" class="status-online">Online</span>
+                <span data-label="Firmware Version">108.86.0.153</span>
+              </div>
+            </div>
+          </section>
+
+          <section id="multiple-workspace" class="workspace-panel hidden">
+            <div class="hero-card">
+              <div>
+                <div class="eyebrow">Batch Provisioning</div>
+                <h2>Stage several devices, then send one save.</h2>
+                <p>Choose one site for the whole batch, then add rows manually or import them from CSV.</p>
+              </div>
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <span>Rows Ready</span>
+                  <strong id="batch-ready-count">1</strong>
+                </div>
+                <div class="hero-stat">
+                  <span>Batch Limit</span>
+                  <strong>100</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="batch-toolbar-card">
+              <div class="batch-toolbar-top">
+                <div class="field batch-site-field">
+                  <span>Batch Site</span>
+                  <div class="combo" id="batch-site-combo">
+                    <div class="combo-shell">
+                      <input id="batch-site-input" name="batchSiteInput" type="text" placeholder="Select one site for all devices" autocomplete="off" aria-expanded="false">
+                      <input id="selected-batch-site-id" name="selectedBatchSiteId" type="hidden">
+                      <button id="batch-site-toggle" class="combo-toggle" type="button" aria-label="Toggle batch site list"></button>
+                    </div>
+                    <div id="batch-site-menu" class="combo-menu hidden" role="listbox"></div>
+                  </div>
+                  <small id="batch-site-note" class="field-note">Every imported or manual row in this batch will be added to the selected site.</small>
+                </div>
+                <div class="batch-actions">
+                  <button id="batch-template-button" class="secondary-button" type="button">Download Template</button>
+                  <button id="batch-upload-button" class="secondary-button" type="button">Upload CSV</button>
+                  <input id="batch-upload-input" type="file" accept=".csv,text/csv" class="hidden">
+                  <button id="batch-add-row" class="secondary-button" type="button">Add Row</button>
+                  <button id="batch-save-button" class="primary-button" type="button">Save</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="table-card batch-table-card">
+              <div class="table-head table-head-batch">
+                <span>Name</span>
+                <span>MAC</span>
+                <span>Serial</span>
+                <span>Model</span>
+                <span>Action</span>
+              </div>
+              <form id="batch-form" class="batch-table-form" novalidate>
+                <div id="batch-rows" class="batch-rows"></div>
+              </form>
+            </div>
+
+            <section id="batch-response-panel" class="response hidden" aria-live="polite">
+              <div id="batch-response-badge" class="response-badge">Pending</div>
+              <p id="batch-response-message" class="response-message"></p>
+            </section>
+          </section>
+
+          <section id="search-workspace" class="workspace-panel hidden">
+            <div class="search-shell">
+              <div class="search-bar-card">
+                <div class="search-controls">
+                  <input id="search-input" class="search-input" type="text" placeholder="Device Name/MAC/IP/Description">
+                  <button id="search-button" class="ghost-button" type="button">AI search</button>
+                </div>
+                <div id="search-scope" class="search-scope">Searching inside NIMBUSIP</div>
+                <div class="search-status-toolbar">
+                  <button id="search-total-filter" class="status-filter-card status-filter-active" type="button" data-status-filter="all">
+                    <span>Total</span>
+                    <strong id="search-total-count-inline">0</strong>
+                  </button>
+                  <button class="status-filter-card" type="button" data-status-filter="online">
+                    <span>Online</span>
+                    <strong id="search-online-count-inline">0</strong>
+                  </button>
+                  <button class="status-filter-card" type="button" data-status-filter="offline">
+                    <span>Offline</span>
+                    <strong id="search-offline-count-inline">0</strong>
+                  </button>
+                  <button class="status-filter-card" type="button" data-status-filter="pending">
+                    <span>Pending</span>
+                    <strong id="search-pending-count-inline">0</strong>
+                  </button>
+                  <button class="status-filter-card" type="button" data-status-filter="inactive">
+                    <span>Inactive</span>
+                    <strong id="search-inactive-count-inline">0</strong>
+                  </button>
+                </div>
+                <div class="search-subtools">
+                  <input id="search-filter-input" class="search-input search-input-sub" type="text" placeholder="Filter current results by Name / Model / Status / Account Status">
+                </div>
+              </div>
+
+              <div class="table-card search-table-card">
+                <div class="search-table-head">
+                  <span>Name/MAC</span>
+                  <span>Model</span>
+                  <span>Status</span>
+                  <span>Account Status</span>
+                  <span>Firmware Ver...</span>
+                  <span>IP</span>
+                  <span>Site</span>
+                  <span>Server</span>
+                </div>
+                <div class="search-table-scroll">
+                  <div id="search-results" class="search-results"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="configuration-workspace" class="workspace-panel hidden">
+            <div class="hero-card">
+              <div>
+                <div class="eyebrow">Configuration</div>
+                <h2>Ready for the next step.</h2>
+                <p>This page is reserved for future YMCS configuration actions.</p>
+              </div>
+            </div>
+          </section>
+        </section>
+      </section>
+
+      <aside class="drawer">
+        <section id="device-drawer" class="drawer-panel">
+          <header class="drawer-header">
+            <h1>Add</h1>
+          </header>
+
+          <div class="notice">
+            The device will report using the RPS service and be simultaneously added to the RPS device list
+          </div>
+
+          <form id="device-form" class="form" novalidate>
+            <label class="field">
+              <span>Device Name</span>
+              <input id="name" name="name" type="text" placeholder="Please enter the device Domain/name" maxlength="128">
+            </label>
+
+            <label class="field">
+              <span><em>*</em> MAC</span>
+              <input id="mac" name="mac" type="text" placeholder="Please enter MAC" autocomplete="off" required>
+            </label>
+
+            <label class="field">
+              <span><em>*</em> Machine ID(Serial Number)</span>
+              <input id="sn" name="sn" type="text" placeholder="Please enter Machine ID(Serial Number)" maxlength="128" required>
+            </label>
+
+            <div class="field">
+              <span>Model</span>
+              <div class="combo" id="model-combo">
+                <div class="combo-shell">
+                  <input id="model-input" name="modelInput" type="text" placeholder="Select" autocomplete="off" aria-expanded="false">
+                  <input id="selected-model-id" name="selectedModelId" type="hidden">
+                  <button id="model-toggle" class="combo-toggle" type="button" aria-label="Toggle model list"></button>
+                </div>
+                <div id="model-menu" class="combo-menu hidden" role="listbox"></div>
+              </div>
+              <small class="field-note">The model list loads from YMCS without site info. You can also paste a raw YMCS modelId.</small>
+            </div>
+
+            <details class="advanced">
+              <summary>Advanced Settings</summary>
+              <div class="field field-tight">
+                <span>Site</span>
+                <div class="combo" id="site-combo">
+                  <div class="combo-shell">
+                    <input id="site-input" name="siteInput" type="text" placeholder="Select a site or paste a site ID" autocomplete="off" aria-expanded="false">
+                    <input id="selected-site-id" name="selectedSiteId" type="hidden">
+                    <button id="site-toggle" class="combo-toggle" type="button" aria-label="Toggle site list"></button>
+                  </div>
+                  <div id="site-menu" class="combo-menu hidden" role="listbox"></div>
+                </div>
+                <small id="device-site-note" class="field-note">Choose a YMCS site by name, or paste a raw site ID such as <code>u4encsac</code>.</small>
+              </div>
+            </details>
+
+            <section id="response-panel" class="response hidden" aria-live="polite">
+              <div id="response-badge" class="response-badge">Pending</div>
+              <p id="response-message" class="response-message"></p>
+            </section>
+
+            <footer class="form-actions">
+              <button id="save-button" class="primary-button" type="submit">Save</button>
+              <button id="reset-button" class="secondary-button" type="reset">Cancel</button>
+            </footer>
+          </form>
+        </section>
+
+        <section id="multiple-drawer" class="drawer-panel hidden">
+          <header class="drawer-header">
+            <h1>Multiple Devices</h1>
+          </header>
+
+          <div class="notice">
+            Use the main workspace to choose one site, import CSV rows, or add rows manually. Then save the whole batch once.
+          </div>
+          <div class="insight-card">
+            <span class="eyebrow">Batch Rules</span>
+            <strong>One site per upload</strong>
+            <p>Pick the site first, then all rows in the batch will use that same site so you do not need to set it one by one.</p>
+          </div>
+        </section>
+
+        <section id="search-drawer" class="drawer-panel hidden">
+          <header class="drawer-header">
+            <h1>Search</h1>
+          </header>
+          <div class="notice">
+            Search is scoped to the main NIMBUSIP tree and matches device name, MAC, IP, description, site, and model.
+          </div>
+          <div class="insight-card">
+            <span class="eyebrow">Search Scope</span>
+            <strong id="search-scope-title">NIMBUSIP</strong>
+            <p id="search-scope-details">Loading site scope from YMCS...</p>
+          </div>
+          <div class="insight-card search-summary-card">
+            <span class="eyebrow">Search Counters</span>
+            <button id="search-total-panel-filter" class="search-total-row search-panel-button status-filter-active" type="button" data-status-filter="all">
+              <strong id="search-total-count">0</strong>
+              <p>Phone Devices</p>
+            </button>
+            <div class="search-status-grid">
+              <button class="search-status-item search-panel-button" type="button" data-status-filter="online">
+                <span class="status-dot status-dot-online"></span>
+                <label>Online</label>
+                <strong id="search-online-count">0</strong>
+              </button>
+              <button class="search-status-item search-panel-button" type="button" data-status-filter="offline">
+                <span class="status-dot status-dot-offline"></span>
+                <label>Offline</label>
+                <strong id="search-offline-count">0</strong>
+              </button>
+              <button class="search-status-item search-panel-button" type="button" data-status-filter="pending">
+                <span class="status-dot status-dot-pending"></span>
+                <label>Pending</label>
+                <strong id="search-pending-count">0</strong>
+              </button>
+              <button class="search-status-item search-panel-button" type="button" data-status-filter="inactive">
+                <span class="status-dot status-dot-inactive"></span>
+                <label>Inactive</label>
+                <strong id="search-inactive-count">0</strong>
+              </button>
+            </div>
+          </div>
+        </section>
+
+        <section id="configuration-drawer" class="drawer-panel hidden">
+          <header class="drawer-header">
+            <h1>Configuration</h1>
+          </header>
+          <div class="notice">
+            This section is intentionally empty for now so we can keep the shape ready for the next YMCS features.
+          </div>
+          <div class="insight-card">
+            <span class="eyebrow">Status</span>
+            <strong>Placeholder</strong>
+            <p>No backend action is connected here yet.</p>
+          </div>
+        </section>
+      </aside>
+    </main>
+
+    <script type="module" src="/app.js"></script>
+  </body>
+</html>
