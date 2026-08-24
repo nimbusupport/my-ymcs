@@ -626,6 +626,17 @@ button {
   word-break: break-word;
 }
 
+.search-cell-link {
+  color: #0f6f83;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.search-cell-link:hover {
+  color: #0b5666;
+}
+
 .search-cell-status .search-cell-label {
   align-items: center;
   gap: 6px;

@@ -382,6 +382,20 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function getSearchServerPortalUrl(serverLabel) {
+  const normalizedLabel = String(serverLabel || "").trim().toUpperCase();
+
+  if (normalizedLabel.startsWith("EU")) {
+    return "https://eu.ymcs.yealink.com/manager/login";
+  }
+
+  if (normalizedLabel.startsWith("US")) {
+    return "https://us.ymcs.yealink.com/manager/login";
+  }
+
+  return "";
+}
+
 function escapeXml(value) {
   return String(value ?? "")
     .replace(/&/g, "&amp;")
@@ -787,6 +801,11 @@ function renderSearchResults(items) {
   items.forEach((item) => {
     const row = document.createElement("div");
     row.className = "search-row";
+    const searchServerLabel = item.searchServerLabel || "-";
+    const searchServerPortalUrl = getSearchServerPortalUrl(searchServerLabel);
+    const searchServerMarkup = searchServerPortalUrl
+      ? `<a class="search-cell-link" href="${searchServerPortalUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(searchServerLabel)}</a>`
+      : escapeHtml(searchServerLabel);
     row.innerHTML = `
       <span class="search-cell search-cell-name">
         <small class="search-cell-label">Name/MAC</small>
@@ -819,7 +838,7 @@ function renderSearchResults(items) {
       </span>
       <span class="search-cell">
         <small class="search-cell-label">Server</small>
-        <span class="search-cell-value">${escapeHtml(item.searchServerLabel || "-")}</span>
+        <span class="search-cell-value">${searchServerMarkup}</span>
       </span>
     `;
     searchResults.append(row);
