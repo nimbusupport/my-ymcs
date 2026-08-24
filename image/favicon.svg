@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Rounded Square Container -->
+  <rect width="64" height="64" rx="14" fill="#00A88F"/>
+  
+  <!-- Bold Stylized 'Y' Monogram -->
+  <path d="M 18 16 L 29 32 L 29 48 L 35 48 L 35 32 L 46 16 L 38 16 L 32 26 L 26 16 Z" fill="#FFFFFF"/>
+</svg>
