@@ -85,6 +85,70 @@ let currentUser = null;
 let currentView = "device";
 let searchRefreshTimer = null;
 
+function setCounterText(element, value) {
+  if (element) {
+    element.textContent = String(value);
+  }
+}
+
+function resetSearchCounters() {
+  setCounterText(searchTotalCount, 0);
+  setCounterText(searchOnlineCount, 0);
+  setCounterText(searchOfflineCount, 0);
+  setCounterText(searchPendingCount, 0);
+  setCounterText(searchInactiveCount, 0);
+  setCounterText(searchTotalCountInline, 0);
+  setCounterText(searchOnlineCountInline, 0);
+  setCounterText(searchOfflineCountInline, 0);
+  setCounterText(searchPendingCountInline, 0);
+  setCounterText(searchInactiveCountInline, 0);
+}
+
+function resetAppState() {
+  modelItems = [];
+  siteItems = [];
+  filteredModelItems = [];
+  filteredSiteItems = [];
+  modelActiveIndex = -1;
+  siteActiveIndex = -1;
+  batchSiteActiveIndex = -1;
+  batchRowSequence = 0;
+  searchResultItems = [];
+  activeStatusFilter = "all";
+  appInitialized = false;
+  currentView = "device";
+
+  if (searchRefreshTimer) {
+    window.clearInterval(searchRefreshTimer);
+    searchRefreshTimer = null;
+  }
+
+  hideMenu(modelMenu, modelInput);
+  hideMenu(siteMenu, siteInput);
+  hideMenu(batchSiteMenu, batchSiteInput);
+
+  deviceForm.reset();
+  resetBatchForm();
+
+  selectedModelIdInput.value = "";
+  selectedSiteIdInput.value = "";
+  selectedBatchSiteIdInput.value = "";
+  searchInput.value = "";
+  searchFilterInput.value = "";
+  searchResults.innerHTML = "";
+  searchScope.textContent = "Searching inside NIMBUSIP";
+  searchScopeTitle.textContent = "NIMBUSIP";
+  searchScopeDetails.textContent = "Loading site scope from YMCS...";
+  modelCount.textContent = "0";
+  siteCount.textContent = "0";
+  resetSearchCounters();
+  resetResponseState(responsePanel, responseMessage);
+  resetResponseState(batchResponsePanel, batchResponseMessage);
+  updateInputClearButton(searchInput, searchClearButton);
+  updateInputClearButton(searchFilterInput, searchFilterClearButton);
+  syncActiveStatusButtons();
+}
+
 function showMenu(menu, input) {
   menu.classList.remove("hidden");
   input.setAttribute("aria-expanded", "true");
@@ -178,6 +242,7 @@ function applyLockedSiteScopeToInputs() {
 
 function activateView(view) {
   currentView = view;
+  appShell.dataset.view = view;
 
   for (const item of views) {
     document.querySelector(`#${item}-workspace`)?.classList.toggle("hidden", item !== view);
@@ -844,6 +909,7 @@ logoutButton.addEventListener("click", async () => {
   } finally {
     logoutButton.disabled = false;
     applySessionUser(null);
+    resetAppState();
     resetResponseState(loginResponse, loginResponseMessage);
     loginForm.reset();
     setAuthView("login");
