@@ -1,4 +1,4 @@
-const views = ["device", "multiple", "search", "configuration"];
+const views = ["device", "multiple", "search", "contacts", "configuration"];
 const navButtons = Array.from(document.querySelectorAll("[data-view]"));
 const workspaceTitle = document.querySelector("#workspace-title");
 const quickAddButton = document.querySelector("#quick-add-button");
@@ -66,6 +66,19 @@ const searchPendingCountInline = document.querySelector("#search-pending-count-i
 const searchInactiveCountInline = document.querySelector("#search-inactive-count-inline");
 const statusFilterButtons = Array.from(document.querySelectorAll("[data-status-filter]"));
 
+const contactsReadyCount = document.querySelector("#contacts-ready-count");
+const contactsFixedCount = document.querySelector("#contacts-fixed-count");
+const contactsSkippedCount = document.querySelector("#contacts-skipped-count");
+const contactsFileName = document.querySelector("#contacts-file-name");
+const contactsTemplateButton = document.querySelector("#contacts-template-button");
+const contactsUploadButton = document.querySelector("#contacts-upload-button");
+const contactsUploadInput = document.querySelector("#contacts-upload-input");
+const contactsGenerateButton = document.querySelector("#contacts-generate-button");
+const contactsPreview = document.querySelector("#contacts-preview");
+const contactsResponsePanel = document.querySelector("#contacts-response-panel");
+const contactsResponseBadge = document.querySelector("#contacts-response-badge");
+const contactsResponseMessage = document.querySelector("#contacts-response-message");
+
 const modelCount = document.querySelector("#model-count");
 const siteCount = document.querySelector("#site-count");
 const deviceSiteNote = document.querySelector("#device-site-note");
@@ -84,6 +97,10 @@ let appInitialized = false;
 let currentUser = null;
 let currentView = "device";
 let searchRefreshTimer = null;
+let contactsSourceFileName = "";
+let contactItems = [];
+let contactFixedRows = 0;
+let contactSkippedRows = 0;
 
 function setCounterText(element, value) {
   if (element) {
@@ -102,6 +119,62 @@ function resetSearchCounters() {
   setCounterText(searchOfflineCountInline, 0);
   setCounterText(searchPendingCountInline, 0);
   setCounterText(searchInactiveCountInline, 0);
+}
+
+function renderContactPreview(items) {
+  contactsPreview.innerHTML = "";
+
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "contacts-preview-empty";
+    empty.textContent = "Upload a CSV file to preview the cleaned phone numbers before generating XML.";
+    contactsPreview.append(empty);
+    return;
+  }
+
+  items.slice(0, 25).forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "contacts-preview-row";
+    row.innerHTML = `
+      <span class="contacts-preview-cell">
+        <small class="contacts-preview-label">Name</small>
+        <strong class="contacts-preview-value">${escapeHtml(item.display_name)}</strong>
+      </span>
+      <span class="contacts-preview-cell">
+        <small class="contacts-preview-label">Original Number</small>
+        <span class="contacts-preview-value">${escapeHtml(item.original_number || "-")}</span>
+      </span>
+      <span class="contacts-preview-cell">
+        <small class="contacts-preview-label">XML Number</small>
+        <span class="contacts-preview-value">${escapeHtml(item.office_number || "-")}</span>
+      </span>
+      <span class="contacts-preview-cell">
+        <small class="contacts-preview-label">Status</small>
+        <span class="contacts-status-pill ${item.wasFixed ? "contacts-status-pill-fixed" : "contacts-status-pill-ready"}">${item.wasFixed ? "Corrected" : "Ready"}</span>
+      </span>
+    `;
+    contactsPreview.append(row);
+  });
+
+  if (items.length > 25) {
+    const more = document.createElement("div");
+    more.className = "contacts-preview-empty";
+    more.textContent = `Preview limited to the first 25 rows. ${items.length - 25} more contacts are ready for XML export.`;
+    contactsPreview.append(more);
+  }
+}
+
+function resetContactsGenerator() {
+  contactsSourceFileName = "";
+  contactItems = [];
+  contactFixedRows = 0;
+  contactSkippedRows = 0;
+  contactsFileName.textContent = "No CSV selected yet.";
+  setCounterText(contactsReadyCount, 0);
+  setCounterText(contactsFixedCount, 0);
+  setCounterText(contactsSkippedCount, 0);
+  resetResponseState(contactsResponsePanel, contactsResponseMessage);
+  renderContactPreview([]);
 }
 
 function resetAppState() {
@@ -142,6 +215,7 @@ function resetAppState() {
   modelCount.textContent = "0";
   siteCount.textContent = "0";
   resetSearchCounters();
+  resetContactsGenerator();
   resetResponseState(responsePanel, responseMessage);
   resetResponseState(batchResponsePanel, batchResponseMessage);
   updateInputClearButton(searchInput, searchClearButton);
@@ -257,9 +331,12 @@ function activateView(view) {
     ? "Search Devices"
     : view === "multiple"
       ? "Multiple Devices"
-      : view === "configuration"
-        ? "Configuration"
-        : "NIMBUSIP";
+      : view === "contacts"
+        ? "Contacts Generate"
+        : view === "configuration"
+          ? "Configuration"
+          : "NIMBUSIP";
+  quickAddButton.classList.toggle("hidden", view === "contacts" || view === "configuration");
 
   syncSearchAutoRefresh();
 }
@@ -303,6 +380,59 @@ function escapeHtml(value) {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+function escapeXml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+function downloadTextFile(content, filename, mimeType) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+function normalizeCsvHeader(value) {
+  return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
+}
+
+function findHeaderIndex(headers, aliases) {
+  return headers.findIndex((header) => aliases.includes(header));
+}
+
+function normalizeContactNumber(value) {
+  const original = String(value ?? "").trim();
+  const digits = original.replace(/\D/g, "");
+
+  if (!digits) {
+    return {
+      normalized: "",
+      wasFixed: original !== ""
+    };
+  }
+
+  let normalized = digits;
+
+  if (normalized.startsWith("972")) {
+    normalized = normalized.slice(3);
+    normalized = normalized.startsWith("0") ? normalized : `0${normalized}`;
+  } else if (!normalized.startsWith("0") && normalized.length >= 8 && normalized.length <= 9) {
+    normalized = `0${normalized}`;
+  }
+
+  return {
+    normalized,
+    wasFixed: normalized !== original
+  };
 }
 
 function renderComboMenu(menu, items, emptyText, onSelect) {
@@ -540,6 +670,105 @@ function mapCsvRows(text) {
     sn: values[snIndex] ? values[snIndex].trim() : "",
     modelId: findModelOption(values[modelIndex] ? values[modelIndex].trim() : "")
   })).filter((item) => item.name || item.mac || item.sn || item.modelId);
+}
+
+function mapContactsCsvRows(text) {
+  const rows = parseCsv(text);
+  if (rows.length < 2) {
+    throw new Error("CSV must include a header row and at least one contact row.");
+  }
+
+  const headers = rows[0].map((value) => normalizeCsvHeader(value));
+  const nameIndex = findHeaderIndex(headers, ["name", "fullname", "displayname", "contactname"]);
+  const numberIndex = findHeaderIndex(headers, ["number", "phone", "phonenumber", "mobile", "mobilenumber", "telephone", "telephonenumber", "tel", "officenumber"]);
+
+  if (nameIndex === -1 || numberIndex === -1) {
+    throw new Error("CSV must include name and number columns.");
+  }
+
+  const contacts = [];
+  let fixedCount = 0;
+  let skippedCount = 0;
+
+  rows.slice(1).forEach((values) => {
+    const displayName = values[nameIndex] ? values[nameIndex].trim() : "";
+    const originalNumber = values[numberIndex] ? values[numberIndex].trim() : "";
+
+    if (!displayName && !originalNumber) {
+      return;
+    }
+
+    const normalizedNumber = normalizeContactNumber(originalNumber);
+
+    if (!displayName || !normalizedNumber.normalized) {
+      skippedCount += 1;
+      return;
+    }
+
+    if (normalizedNumber.wasFixed) {
+      fixedCount += 1;
+    }
+
+    contacts.push({
+      display_name: displayName,
+      office_number: normalizedNumber.normalized,
+      mobile_number: "",
+      other_number: "",
+      line: "-1",
+      ring: "Resource:Ring1.wav",
+      group_id_name: "All Contacts",
+      eyepea_contact_id: "",
+      original_number: originalNumber,
+      wasFixed: normalizedNumber.wasFixed
+    });
+  });
+
+  return {
+    contacts,
+    fixedCount,
+    skippedCount
+  };
+}
+
+function buildContactsXml(items) {
+  const lines = [
+    "<?xml version=\"1.0\" encoding=\"utf-8\"?>",
+    "<vp_contact>",
+    "  <root_group>",
+    "    <group display_name=\"All Contacts\" />",
+    "    <group display_name=\"Blocklist\" />",
+    "    <group display_name=\"All\" />",
+    "  </root_group>",
+    "  <root_contact>"
+  ];
+
+  items.forEach((item) => {
+    lines.push(`    <contact display_name="${escapeXml(item.display_name)}" office_number="${escapeXml(item.office_number)}" mobile_number="${escapeXml(item.mobile_number)}" other_number="${escapeXml(item.other_number)}" line="${escapeXml(item.line)}" ring="${escapeXml(item.ring)}" group_id_name="${escapeXml(item.group_id_name)}" eyepea_contact_id="${escapeXml(item.eyepea_contact_id)}" />`);
+  });
+
+  lines.push("  </root_contact>");
+  lines.push("</vp_contact>");
+
+  return lines.join("\n");
+}
+
+async function loadContactsCsvFile(file) {
+  const text = await file.text();
+  const mapped = mapContactsCsvRows(text);
+
+  if (mapped.contacts.length === 0) {
+    throw new Error("No valid contacts were found in the CSV file.");
+  }
+
+  contactsSourceFileName = file.name;
+  contactItems = mapped.contacts;
+  contactFixedRows = mapped.fixedCount;
+  contactSkippedRows = mapped.skippedCount;
+  contactsFileName.textContent = file.name;
+  setCounterText(contactsReadyCount, contactItems.length);
+  setCounterText(contactsFixedCount, contactFixedRows);
+  setCounterText(contactsSkippedCount, contactSkippedRows);
+  renderContactPreview(contactItems);
 }
 
 function renderSearchResults(items) {
@@ -845,6 +1074,7 @@ async function initializeApp() {
   appInitialized = true;
   activateView("device");
   applyLockedSiteScopeToInputs();
+  resetContactsGenerator();
 
   try {
     await Promise.all([
@@ -1224,13 +1454,7 @@ batchTemplateButton.addEventListener("click", () => {
     "Reception,c4fc22000001,802017H120040001,W70B",
     "Office 2,c4fc22000002,802017H120040002,SIP-T54W"
   ].join("\n");
-  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = "ymcs-multiple-devices-template.csv";
-  link.click();
-  URL.revokeObjectURL(url);
+  downloadTextFile(csv, "ymcs-multiple-devices-template.csv", "text/csv;charset=utf-8");
 });
 
 batchUploadButton.addEventListener("click", () => {
@@ -1261,6 +1485,91 @@ batchUploadInput.addEventListener("change", async (event) => {
     setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, error instanceof Error ? error.message : "CSV import failed.");
   } finally {
     batchUploadInput.value = "";
+  }
+});
+
+contactsTemplateButton.addEventListener("click", () => {
+  const csv = [
+    "name,number",
+    "Reception,050-123_4567",
+    "Office 2,+972 54 987 6543"
+  ].join("\n");
+  downloadTextFile(csv, "yealink-contacts-template.csv", "text/csv;charset=utf-8");
+});
+
+contactsUploadButton.addEventListener("click", () => {
+  contactsUploadInput.click();
+});
+
+contactsUploadInput.addEventListener("change", async (event) => {
+  const file = event.target.files?.[0];
+  if (!file) {
+    return;
+  }
+
+  try {
+    await loadContactsCsvFile(file);
+    setResponseState(
+      contactsResponsePanel,
+      contactsResponseBadge,
+      contactsResponseMessage,
+      true,
+      `${contactItems.length} contacts loaded. ${contactFixedRows} numbers were corrected and ${contactSkippedRows} rows were skipped.`
+    );
+  } catch (error) {
+    resetContactsGenerator();
+    setResponseState(
+      contactsResponsePanel,
+      contactsResponseBadge,
+      contactsResponseMessage,
+      false,
+      error instanceof Error ? error.message : "CSV import failed."
+    );
+  } finally {
+    contactsUploadInput.value = "";
+  }
+});
+
+contactsGenerateButton.addEventListener("click", () => {
+  if (contactItems.length === 0) {
+    setResponseState(
+      contactsResponsePanel,
+      contactsResponseBadge,
+      contactsResponseMessage,
+      false,
+      "Upload a CSV file before generating the XML contact list."
+    );
+    return;
+  }
+
+  contactsGenerateButton.disabled = true;
+  contactsGenerateButton.textContent = "Generating...";
+
+  try {
+    const xmlContent = buildContactsXml(contactItems);
+    const fileName = contactsSourceFileName
+      ? `${contactsSourceFileName.replace(/\.[^.]+$/, "") || "contacts"}-yealink.xml`
+      : "contacts-yealink.xml";
+
+    downloadTextFile(xmlContent, fileName, "application/xml;charset=utf-8");
+    setResponseState(
+      contactsResponsePanel,
+      contactsResponseBadge,
+      contactsResponseMessage,
+      true,
+      `XML generated for ${contactItems.length} contacts. ${contactFixedRows} numbers were normalized before export.`
+    );
+  } catch (error) {
+    setResponseState(
+      contactsResponsePanel,
+      contactsResponseBadge,
+      contactsResponseMessage,
+      false,
+      error instanceof Error ? error.message : "XML generation failed."
+    );
+  } finally {
+    contactsGenerateButton.disabled = false;
+    contactsGenerateButton.textContent = "Generate XML";
   }
 });
 
