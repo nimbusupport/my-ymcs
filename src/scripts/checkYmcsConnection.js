@@ -1,10 +1,14 @@
 import dotenv from "dotenv";
 import {
   buildAddDeviceRequest,
+  buildListDevicesRequest,
   buildListModelsRequest,
+  buildListSitesRequest,
   buildTokenRequest,
   extractYmcsMessage,
-  getAccessToken
+  getAccessToken,
+  listDevices,
+  listSites
 } from "../lib/ymcsClient.js";
 
 dotenv.config();
@@ -41,6 +45,33 @@ function buildProbeRequest(env) {
     };
   }
 
+  if (target === "sites") {
+    const input = parseJsonEnv("YMCS_CHECK_QUERY") ?? {
+      skip: Number(env.YMCS_CHECK_SKIP || 0),
+      limit: Number(env.YMCS_CHECK_LIMIT || 200)
+    };
+
+    return {
+      label: "Site list probe",
+      method: "POST",
+      input
+    };
+  }
+
+  if (target === "devices") {
+    const input = parseJsonEnv("YMCS_CHECK_QUERY") ?? {
+      skip: Number(env.YMCS_CHECK_SKIP || 0),
+      limit: Number(env.YMCS_CHECK_LIMIT || 200),
+      siteId: env.YMCS_SITE_ID || ""
+    };
+
+    return {
+      label: "Device list probe",
+      method: "POST",
+      input
+    };
+  }
+
   const input = parseJsonEnv("YMCS_CHECK_QUERY") ?? {
     deviceType: Number(env.YMCS_DEVICE_TYPE || 1)
   };
@@ -54,10 +85,11 @@ function buildProbeRequest(env) {
 
 async function run() {
   const env = process.env;
+  const target = getCheckTarget();
   const tokenPreview = buildTokenRequest(env);
   console.log("YMCS base URL:", env.YMCS_BASE_URL || "https://eu-api.ymcs.yealink.com");
   console.log("YMCS token URL:", tokenPreview.url);
-  console.log("YMCS check target:", getCheckTarget());
+  console.log("YMCS check target:", target);
 
   console.log("\nToken request preview:");
   console.log(JSON.stringify({
@@ -72,9 +104,15 @@ async function run() {
 
   const accessToken = await getAccessToken(env);
   const probe = buildProbeRequest(env);
-  probe.request = probe.method === "POST"
-    ? buildAddDeviceRequest(probe.input, env, { accessToken })
-    : buildListModelsRequest(probe.input, env, { accessToken });
+  if (target === "device-add") {
+    probe.request = buildAddDeviceRequest(probe.input, env, { accessToken });
+  } else if (target === "sites") {
+    probe.request = buildListSitesRequest(probe.input, env, { accessToken });
+  } else if (target === "devices") {
+    probe.request = buildListDevicesRequest(probe.input, env, { accessToken });
+  } else {
+    probe.request = buildListModelsRequest(probe.input, env, { accessToken });
+  }
 
   console.log("YMCS request URL:", probe.request.url);
 
@@ -88,6 +126,28 @@ async function run() {
       Authorization: "Bearer ***"
     }
   }, null, 2));
+
+  if (target === "sites" || target === "devices") {
+    const result = target === "sites"
+      ? await listSites(probe.input, env)
+      : await listDevices(probe.input, env);
+    const query = String(env.YMCS_CHECK_MATCH || "").trim().toUpperCase();
+    const matchedItems = query
+      ? result.items.filter((item) => JSON.stringify(item).toUpperCase().includes(query))
+      : result.items;
+
+    console.log(JSON.stringify({
+      ok: result.ok,
+      status: result.status,
+      statusText: result.statusText,
+      requestUrl: result.requestUrl,
+      message: result.message,
+      totalItems: result.items.length,
+      matchQuery: query || null,
+      matchedItems: matchedItems.slice(0, 25)
+    }, null, 2));
+    return;
+  }
 
   const response = await fetch(probe.request.url, {
     method: probe.method,

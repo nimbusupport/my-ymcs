@@ -9,7 +9,9 @@
     "test": "node --test",
     "check:ymcs": "node src/scripts/checkYmcsConnection.js",
     "check:ymcs:models": "node src/scripts/checkYmcsConnection.js models",
-    "check:ymcs:device": "node src/scripts/checkYmcsConnection.js device-add"
+    "check:ymcs:device": "node src/scripts/checkYmcsConnection.js device-add",
+    "check:ymcs:sites": "node src/scripts/checkYmcsConnection.js sites",
+    "check:ymcs:devices": "node src/scripts/checkYmcsConnection.js devices"
   },
   "dependencies": {
     "dotenv": "^17.2.3"

@@ -202,11 +202,20 @@
           <section id="search-workspace" class="workspace-panel hidden">
             <div class="search-shell">
               <div class="search-bar-card">
-                <div class="search-controls">
-                  <input id="search-input" class="search-input" type="text" placeholder="Device Name/MAC/IP/Description">
-                  <button id="search-button" class="ghost-button" type="button">AI search</button>
-                </div>
+                <form id="search-form" class="search-controls" novalidate>
+                  <div class="search-input-shell">
+                    <input id="search-input" class="search-input" type="text" placeholder="Device Name/MAC/IP/Description/Site" enterkeyhint="search">
+                    <button id="search-clear-button" class="search-input-clear hidden" type="button" aria-label="Clear main search"></button>
+                  </div>
+                  <button id="search-button" class="ghost-button" type="submit">AI search</button>
+                </form>
                 <div id="search-scope" class="search-scope">Searching inside NIMBUSIP</div>
+                <div class="search-subtools">
+                  <div class="search-input-shell">
+                    <input id="search-filter-input" class="search-input search-input-sub" type="text" placeholder="Filter current results by Name / Model / Status / Account Status" enterkeyhint="search">
+                    <button id="search-filter-clear-button" class="search-input-clear hidden" type="button" aria-label="Clear current-results filter"></button>
+                  </div>
+                </div>
                 <div class="search-status-toolbar">
                   <button id="search-total-filter" class="status-filter-card status-filter-active" type="button" data-status-filter="all">
                     <span>Total</span>
@@ -228,9 +237,6 @@
                     <span>Inactive</span>
                     <strong id="search-inactive-count-inline">0</strong>
                   </button>
-                </div>
-                <div class="search-subtools">
-                  <input id="search-filter-input" class="search-input search-input-sub" type="text" placeholder="Filter current results by Name / Model / Status / Account Status">
                 </div>
               </div>
 

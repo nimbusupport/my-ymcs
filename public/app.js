@@ -45,9 +45,11 @@ const batchSiteMenu = document.querySelector("#batch-site-menu");
 const batchSiteToggle = document.querySelector("#batch-site-toggle");
 const batchSiteNote = document.querySelector("#batch-site-note");
 
+const searchForm = document.querySelector("#search-form");
 const searchInput = document.querySelector("#search-input");
-const searchButton = document.querySelector("#search-button");
+const searchClearButton = document.querySelector("#search-clear-button");
 const searchFilterInput = document.querySelector("#search-filter-input");
+const searchFilterClearButton = document.querySelector("#search-filter-clear-button");
 const searchResults = document.querySelector("#search-results");
 const searchScope = document.querySelector("#search-scope");
 const searchScopeTitle = document.querySelector("#search-scope-title");
@@ -212,6 +214,20 @@ function statusClassName(status) {
     case "offline":
     default:
       return "status-offline";
+  }
+}
+
+function statusIndicatorClassName(status) {
+  switch (String(status || "").trim().toLowerCase()) {
+    case "online":
+      return "status-indicator-online";
+    case "pending":
+      return "status-indicator-pending";
+    case "inactive":
+      return "status-indicator-inactive";
+    case "offline":
+    default:
+      return "status-indicator-offline";
   }
 }
 
@@ -478,14 +494,39 @@ function renderSearchResults(items) {
     const row = document.createElement("div");
     row.className = "search-row";
     row.innerHTML = `
-      <span data-label="Name/MAC"><strong>${escapeHtml(item.name || "-")}</strong><small>${escapeHtml(item.mac || "-")}</small></span>
-      <span data-label="Model">${escapeHtml(item.model || "-")}</span>
-      <span data-label="Status" class="${statusClassName(item.status)}">${escapeHtml(item.status || "-")}</span>
-      <span data-label="Account Status">${escapeHtml(item.accountStatus || "-")}</span>
-      <span data-label="Firmware">${escapeHtml(item.firmwareVersion || "-")}</span>
-      <span data-label="IP">${escapeHtml([item.wanIp, item.lanIp].filter(Boolean).join(" / ") || "-")}</span>
-      <span data-label="Site">${escapeHtml(item.siteName || "-")}</span>
-      <span data-label="Server">${escapeHtml(item.searchServerLabel || "-")}</span>
+      <span class="search-cell search-cell-name">
+        <small class="search-cell-label">Name/MAC</small>
+        <strong>${escapeHtml(item.name || "-")}</strong>
+        <small class="search-cell-subvalue">${escapeHtml(item.mac || "-")}</small>
+      </span>
+      <span class="search-cell">
+        <small class="search-cell-label">Model</small>
+        <span class="search-cell-value">${escapeHtml(item.model || "-")}</span>
+      </span>
+      <span class="search-cell search-cell-status">
+        <small class="search-cell-label">Status <span class="status-indicator ${statusIndicatorClassName(item.status)}" aria-hidden="true"></span></small>
+        <span class="search-status-value ${statusClassName(item.status)}">${escapeHtml(item.status || "-")}</span>
+      </span>
+      <span class="search-cell">
+        <small class="search-cell-label">Account Status</small>
+        <span class="search-cell-value">${escapeHtml(item.accountStatus || "-")}</span>
+      </span>
+      <span class="search-cell">
+        <small class="search-cell-label">Firmware</small>
+        <span class="search-cell-value">${escapeHtml(item.firmwareVersion || "-")}</span>
+      </span>
+      <span class="search-cell">
+        <small class="search-cell-label">IP</small>
+        <span class="search-cell-value">${escapeHtml([item.wanIp, item.lanIp].filter(Boolean).join(" / ") || "-")}</span>
+      </span>
+      <span class="search-cell">
+        <small class="search-cell-label">Site</small>
+        <span class="search-cell-value">${escapeHtml(item.siteName || "-")}</span>
+      </span>
+      <span class="search-cell">
+        <small class="search-cell-label">Server</small>
+        <span class="search-cell-value">${escapeHtml(item.searchServerLabel || "-")}</span>
+      </span>
     `;
     searchResults.append(row);
   });
@@ -667,6 +708,31 @@ async function runSearch(query = "") {
   }
 
   applySearchFilter();
+}
+
+function updateInputClearButton(input, button) {
+  if (!input || !button) {
+    return;
+  }
+
+  button.classList.toggle("hidden", String(input.value || "").trim() === "");
+}
+
+function bindClearableInput(input, button, onClear) {
+  if (!input || !button) {
+    return;
+  }
+
+  updateInputClearButton(input, button);
+  input.addEventListener("input", () => {
+    updateInputClearButton(input, button);
+  });
+  button.addEventListener("click", () => {
+    input.value = "";
+    updateInputClearButton(input, button);
+    input.focus();
+    onClear();
+  });
 }
 
 function handleComboKeys(event, menu, state) {
@@ -1132,7 +1198,8 @@ batchUploadInput.addEventListener("change", async (event) => {
   }
 });
 
-searchButton.addEventListener("click", () => {
+searchForm.addEventListener("submit", (event) => {
+  event.preventDefault();
   runSearch(searchInput.value.trim()).catch((error) => {
     searchResultItems = [];
     applySearchFilter();
@@ -1140,13 +1207,6 @@ searchButton.addEventListener("click", () => {
       searchScopeDetails.textContent = "Unable to load search results.";
     }
   });
-});
-
-searchInput.addEventListener("keydown", (event) => {
-  if (event.key === "Enter") {
-    event.preventDefault();
-    searchButton.click();
-  }
 });
 
 searchFilterInput.addEventListener("input", () => {
@@ -1165,6 +1225,13 @@ statusFilterButtons.forEach((button) => {
     activeStatusFilter = button.dataset.statusFilter || "all";
     applySearchFilter();
   });
+});
+
+bindClearableInput(searchInput, searchClearButton, () => {
+  searchForm.requestSubmit();
+});
+bindClearableInput(searchFilterInput, searchFilterClearButton, () => {
+  applySearchFilter();
 });
 
 bootstrapSession();

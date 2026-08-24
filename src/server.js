@@ -14,7 +14,7 @@ const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "..", "public");
 const imageDir = path.join(__dirname, "..", "image");
 const port = Number(process.env.PORT || 3000);
-const sessionTtlMs = Number(process.env.SESSION_TTL_MS || 8 * 60 * 60 * 1000);
+const sessionTtlMs = Number(process.env.SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000);
 const sessionCookieName = "ymcs_admin_session";
 const supabaseUrl = String(
   process.env.SUPABASE_URL
@@ -47,6 +47,12 @@ const contentTypes = new Map([
 ]);
 const modelCacheTtlMs = Number(process.env.YMCS_MODELS_CACHE_MS || 5 * 60 * 1000);
 const siteCacheTtlMs = Number(process.env.YMCS_SITES_CACHE_MS || 5 * 60 * 1000);
+const sessionSecret = String(
+  process.env.SESSION_SECRET
+  || process.env.YMCS_ACCESS_KEY_SECRET
+  || process.env.SUPABASE_ANON_KEY
+  || ""
+).trim();
 let cachedModels = {
   expiresAt: 0,
   items: []
@@ -59,7 +65,6 @@ let cachedDevices = {
   expiresAt: 0,
   items: []
 };
-const sessions = new Map();
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, { "Content-Type": "application/json; charset=UTF-8" });
@@ -149,6 +154,10 @@ function createCookie(name, value, maxAgeSeconds = null) {
     parts.push(`Max-Age=${maxAgeSeconds}`);
   }
 
+  if (process.env.NODE_ENV === "production") {
+    parts.push("Secure");
+  }
+
   return parts.join("; ");
 }
 
@@ -181,50 +190,96 @@ function parseCookies(req) {
   return parsed;
 }
 
-function createSession(user) {
-  const token = crypto.randomUUID();
-  const expiresAt = Date.now() + sessionTtlMs;
-  const session = {
-    token,
-    expiresAt,
-    user
-  };
-
-  sessions.set(token, session);
-  return session;
+function toBase64Url(value) {
+  return Buffer.from(value, "utf8")
+    .toString("base64")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
 }
 
-function destroySession(token) {
-  if (token) {
-    sessions.delete(token);
+function fromBase64Url(value) {
+  const normalized = String(value || "")
+    .replace(/-/g, "+")
+    .replace(/_/g, "/");
+  const padding = normalized.length % 4 === 0 ? "" : "=".repeat(4 - (normalized.length % 4));
+
+  return Buffer.from(`${normalized}${padding}`, "base64").toString("utf8");
+}
+
+function signSessionPayload(payload) {
+  if (!sessionSecret) {
+    throw new Error("Missing SESSION_SECRET or fallback secret for signing sessions.");
   }
+
+  return crypto
+    .createHmac("sha256", sessionSecret)
+    .update(payload)
+    .digest("base64url");
 }
 
-function getSession(req) {
+function createSessionCookieValue(user) {
+  const payload = JSON.stringify({
+    email: String(user?.email || "").trim().toLowerCase(),
+    authProvider: String(user?.authProvider || "supabase").trim(),
+    exp: Date.now() + sessionTtlMs
+  });
+  const encodedPayload = toBase64Url(payload);
+  const signature = signSessionPayload(encodedPayload);
+
+  return `${encodedPayload}.${signature}`;
+}
+
+function getUserFromSessionCookie(req) {
   const cookies = parseCookies(req);
-  const token = cookies[sessionCookieName];
+  const rawValue = cookies[sessionCookieName];
 
-  if (!token) {
+  if (!rawValue) {
     return null;
   }
 
-  const session = sessions.get(token);
-  if (!session) {
+  const [encodedPayload, signature] = String(rawValue).split(".");
+  if (!encodedPayload || !signature) {
     return null;
   }
 
-  if (session.expiresAt <= Date.now()) {
-    sessions.delete(token);
+  const expectedSignature = signSessionPayload(encodedPayload);
+  const signatureBuffer = Buffer.from(signature, "utf8");
+  const expectedBuffer = Buffer.from(expectedSignature, "utf8");
+
+  if (signatureBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(signatureBuffer, expectedBuffer)) {
     return null;
   }
 
-  session.expiresAt = Date.now() + sessionTtlMs;
-  return session;
+  let payload = null;
+
+  try {
+    payload = JSON.parse(fromBase64Url(encodedPayload));
+  } catch {
+    return null;
+  }
+
+  if (!payload?.email || Number(payload.exp || 0) <= Date.now()) {
+    return null;
+  }
+
+  const normalizedEmail = String(payload.email).trim().toLowerCase();
+  const userSiteScope = getUserSiteScope(normalizedEmail);
+
+  if (normalizedEmail !== adminEmail && !userSiteScope) {
+    return null;
+  }
+
+  return {
+    email: normalizedEmail,
+    role: normalizedEmail === adminEmail ? "admin" : "worker",
+    authProvider: String(payload.authProvider || "supabase").trim(),
+    siteScope: userSiteScope
+  };
 }
 
 function getAuthUser(req) {
-  const session = getSession(req);
-  return session?.user || null;
+  return getUserFromSessionCookie(req);
 }
 
 function getUserSiteScope(email) {
@@ -545,17 +600,25 @@ function filterDevices(items, query, allowedSiteIds) {
     : items;
 
   if (!needle) {
-    return scopedItems.slice(0, 50);
+    return scopedItems.slice();
   }
 
   return scopedItems.filter((item) => [
+    item.id,
     item.name,
     item.mac,
+    item.sn,
     item.wanIp,
     item.lanIp,
     item.description,
+    item.siteId,
     item.siteName,
-    item.model
+    item.siteParentId,
+    item.siteParentName,
+    item.sitePath,
+    item.accountStatus,
+    item.model,
+    item.searchServerLabel
   ].some((value) => canonicalizeSearchText(value).includes(needle)));
 }
 
@@ -579,6 +642,45 @@ function attachSearchServerLabel(items, serverLabel) {
     ...item,
     searchServerLabel: serverLabel
   }));
+}
+
+function attachSiteContextToDevices(devices, sites) {
+  const sitesById = new Map(sites.map((site) => [site.siteId, site]));
+
+  return devices.map((device) => {
+    const site = sitesById.get(device.siteId);
+
+    if (!site) {
+      return {
+        ...device,
+        siteParentId: "",
+        siteParentName: "",
+        sitePath: device.siteName || ""
+      };
+    }
+
+    const pathNames = [];
+    let currentSite = site;
+
+    while (currentSite) {
+      if (currentSite.name) {
+        pathNames.unshift(currentSite.name);
+      }
+
+      if (!currentSite.parentId) {
+        break;
+      }
+
+      currentSite = sitesById.get(currentSite.parentId) || null;
+    }
+
+    return {
+      ...device,
+      siteParentId: site.parentId || "",
+      siteParentName: site.parentName || "",
+      sitePath: pathNames.join(" / ")
+    };
+  });
 }
 
 function applyUserSiteScopeToSiteList(items, user) {
@@ -734,10 +836,23 @@ async function handleRequest(req, res) {
 
   if (req.method === "GET" && url.pathname === "/api/auth/session") {
     const user = getAuthUser(req);
+    if (user) {
+      sendJsonWithCookie(res, 200, {
+        ok: true,
+        authenticated: true,
+        user
+      }, createCookie(
+        sessionCookieName,
+        createSessionCookieValue(user),
+        Math.floor(sessionTtlMs / 1000)
+      ));
+      return;
+    }
+
     sendJson(res, 200, {
       ok: true,
-      authenticated: Boolean(user),
-      user
+      authenticated: false,
+      user: null
     });
     return;
   }
@@ -775,8 +890,11 @@ async function handleRequest(req, res) {
         siteScope: userSiteScope
       };
 
-      const session = createSession(user);
-      const cookie = createCookie(sessionCookieName, session.token, Math.floor(sessionTtlMs / 1000));
+      const cookie = createCookie(
+        sessionCookieName,
+        createSessionCookieValue(user),
+        Math.floor(sessionTtlMs / 1000)
+      );
 
       sendJsonWithCookie(res, 200, {
         ok: true,
@@ -792,9 +910,6 @@ async function handleRequest(req, res) {
   }
 
   if (req.method === "POST" && url.pathname === "/api/auth/logout") {
-    const cookies = parseCookies(req);
-    destroySession(cookies[sessionCookieName]);
-
     sendJsonWithCookie(res, 200, {
       ok: true
     }, createCookie(sessionCookieName, "", 0));
@@ -866,8 +981,12 @@ async function handleRequest(req, res) {
 
       if (isAdminSearch) {
         const serverResults = await Promise.allSettled(searchServerConfigs.map(async (server) => {
-          const devices = await getYmcsDevices(server.env);
-          return attachSearchServerLabel(filterDevices(devices, query, null), server.label);
+          const [sites, devices] = await Promise.all([
+            getYmcsSites(server.env),
+            getYmcsDevices(server.env)
+          ]);
+          const hydratedDevices = attachSiteContextToDevices(devices, sites);
+          return attachSearchServerLabel(filterDevices(hydratedDevices, query, null), server.label);
         }));
 
         items = serverResults
@@ -886,7 +1005,8 @@ async function handleRequest(req, res) {
           getYmcsDevices(process.env)
         ]);
         const { mainSite, allowedSiteIds } = getMainSiteContext(sites, user);
-        items = applyDeviceScope(filterDevices(devices, query, allowedSiteIds), user);
+        const hydratedDevices = attachSiteContextToDevices(devices, sites);
+        items = applyDeviceScope(filterDevices(hydratedDevices, query, allowedSiteIds), user);
         scope = user?.siteScope
           ? user.siteScope
           : mainSite
