@@ -356,7 +356,7 @@
                         <input id="config-domain" type="text" inputmode="numeric" placeholder="1234" autocomplete="off">
                         <strong>.nimbusip.com</strong>
                       </div>
-                      <small class="field-note">Numbers only. Final domain: <code id="config-domain-preview">1234.nimbusip.com</code></small>
+                      <small class="field-note">Numbers only. Demo domain: <code id="config-domain-preview">1234.nimbusip.com</code></small>
                     </label>
 
                     <label class="field">
@@ -379,9 +379,8 @@
                     <button id="config-generate-button" class="primary-button" type="button">Generate Preview</button>
                     <button id="config-download-button" class="secondary-button" type="button">Download CFG</button>
                     <button id="config-template-button" class="ghost-button" type="button">Download CFG Temp</button>
-                    <button id="config-dsskey-toggle" class="ghost-button" type="button">Dsskey</button>
-                    <button id="config-dsskey-add" class="ghost-button" type="button">Add BLF Row</button>
                     <button id="config-w70b-add" class="ghost-button" type="button">Add W70B Account</button>
+                    <button id="config-dsskey-toggle" class="ghost-button configuration-dsskey-button" type="button">Dsskey</button>
                   </div>
 
                   <section id="config-dsskey-panel" class="configuration-subpanel hidden">
@@ -390,6 +389,10 @@
                         <h4>Dsskey BLF</h4>
                         <p>Manual BLF rows start from <code>linekey.2</code>. Label defaults to the BLF extension and line defaults to <code>1</code>.</p>
                       </div>
+                      <button id="config-dsskey-add" class="ghost-button configuration-inline-add-button" type="button">
+                        <span class="configuration-inline-add-icon" aria-hidden="true">+</span>
+                        <span>Add</span>
+                      </button>
                     </div>
                     <div class="configuration-row-head configuration-dss-grid">
                       <span>Value</span>

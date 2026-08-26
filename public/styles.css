@@ -1415,6 +1415,13 @@ input[readonly] {
   line-height: 1.5;
 }
 
+.configuration-subpanel-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+}
+
 .configuration-inline-note {
   display: flex;
   align-items: center;
@@ -1494,6 +1501,38 @@ input[readonly] {
 
 .sidebar-logout-button {
   width: 100%;
+}
+
+.configuration-dsskey-button {
+  border-color: #d6b4ff;
+  background: #f5ecff;
+  color: #7a46c8;
+}
+
+.configuration-dsskey-button:hover {
+  background: #efe0ff;
+  border-color: #b788f0;
+  color: #6831b8;
+}
+
+.configuration-inline-add-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  white-space: nowrap;
+}
+
+.configuration-inline-add-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: rgba(32, 195, 161, 0.16);
+  color: #1a8d75;
+  font-weight: 700;
+  line-height: 1;
 }
 
 .configuration-preview {
@@ -1618,6 +1657,11 @@ input[readonly] {
   .configuration-w70b-grid,
   .configuration-row-head {
     grid-template-columns: 1fr;
+  }
+
+  .configuration-subpanel-head {
+    flex-direction: column;
+    align-items: stretch;
   }
 
   .configuration-row-head {
