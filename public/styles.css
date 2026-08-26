@@ -213,6 +213,8 @@ button {
 }
 
 .sidebar {
+  display: flex;
+  flex-direction: column;
   background: linear-gradient(180deg, rgba(223, 234, 244, 0.95) 0%, rgba(237, 243, 248, 0.98) 100%);
   border-right: 1px solid var(--line);
   padding: 22px 12px;
@@ -284,6 +286,13 @@ button {
   line-height: 1.45;
 }
 
+.sidebar-footer {
+  margin-top: auto;
+  display: grid;
+  gap: 12px;
+  padding-top: 22px;
+}
+
 .table-view {
   padding: 20px 26px 34px;
   display: flex;
@@ -311,6 +320,7 @@ button {
 .session-user {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   min-height: 40px;
   padding: 0 14px;
   border-radius: 999px;
@@ -1251,6 +1261,259 @@ input[readonly] {
   color: #3e9fe7;
 }
 
+.shell[data-view="configuration"] {
+  --drawer-width: 430px;
+}
+
+.hero-card-configuration {
+  align-items: center;
+}
+
+.hero-card-configuration code {
+  color: #1d6a58;
+  font-weight: 600;
+}
+
+.configuration-hero-side {
+  display: grid;
+  justify-items: center;
+  gap: 16px;
+  min-width: 220px;
+}
+
+.configuration-device-image {
+  width: min(100%, 180px);
+  object-fit: contain;
+  filter: drop-shadow(0 16px 32px rgba(26, 74, 101, 0.18));
+}
+
+.configuration-w70b-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: #456074;
+  font-weight: 600;
+}
+
+.configuration-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(360px, 0.95fr);
+  gap: 22px;
+  align-items: start;
+}
+
+.configuration-card {
+  border-radius: 24px;
+  border: 1px solid rgba(220, 230, 237, 0.95);
+  background: rgba(255, 255, 255, 0.95);
+  box-shadow: 0 20px 48px rgba(17, 45, 74, 0.08);
+  padding: 20px;
+}
+
+.configuration-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.configuration-card-head h3,
+.configuration-subpanel-head h4 {
+  margin: 4px 0 0;
+}
+
+.configuration-fields {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  align-items: start;
+}
+
+.configuration-fields .field {
+  display: grid;
+  grid-template-rows: 20px 54px 18px;
+  gap: 8px;
+  align-items: start;
+}
+
+.configuration-fields .field > span {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+}
+
+.domain-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  min-height: 54px;
+  height: 54px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: #fff;
+}
+
+.domain-shell input {
+  border: 0 !important;
+  box-shadow: none !important;
+  min-height: 52px;
+  height: 52px;
+  padding: 0 14px;
+}
+
+.domain-shell strong {
+  display: flex;
+  align-items: center;
+  min-height: 52px;
+  padding: 0 14px;
+  color: #738293;
+  font-size: 14px;
+}
+
+.configuration-fields .field > input,
+.configuration-fields .field > .domain-shell {
+  width: 100%;
+  min-height: 54px;
+  height: 54px;
+  margin: 0;
+}
+
+.configuration-fields .field > .field-note {
+  min-height: 18px;
+  margin: 0;
+}
+
+.configuration-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.configuration-actions button:disabled,
+.configuration-w70b-toggle input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.configuration-subpanel {
+  display: grid;
+  gap: 14px;
+  padding: 18px;
+  border-radius: 20px;
+  border: 1px solid var(--line);
+  background: #fbfdff;
+}
+
+.configuration-subpanel-head p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+.configuration-inline-note {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: #effaf6;
+  color: #1c6c5a;
+}
+
+.configuration-row-head {
+  display: grid;
+  gap: 10px;
+  padding: 0 8px;
+  color: #7b8896;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.configuration-rows {
+  display: grid;
+  gap: 12px;
+}
+
+.configuration-row {
+  display: grid;
+  gap: 10px;
+  align-items: end;
+  padding: 14px;
+  border-radius: 16px;
+  border: 1px solid #e6eef4;
+  background: #fff;
+}
+
+.configuration-dss-grid {
+  grid-template-columns: 1.1fr 1.1fr 0.9fr 0.9fr 96px;
+}
+
+.configuration-w70b-grid {
+  grid-template-columns: 1fr 1.2fr 96px;
+}
+
+.configuration-mini-field {
+  display: grid;
+  gap: 8px;
+}
+
+.configuration-mini-field span {
+  font-size: 13px;
+  color: #607181;
+}
+
+.configuration-mini-field input,
+.configuration-mini-field select {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  background: #fff;
+  color: var(--text);
+}
+
+.configuration-mini-field input:focus,
+.configuration-mini-field select:focus {
+  outline: none;
+  border-color: #59d9bf;
+  box-shadow: 0 0 0 3px rgba(32, 195, 161, 0.12);
+}
+
+.configuration-row .row-remove {
+  width: 100%;
+}
+
+.sidebar-logout-button {
+  width: 100%;
+}
+
+.configuration-preview {
+  min-height: 720px;
+  margin: 0;
+  overflow: auto;
+  padding: 18px;
+  border-radius: 18px;
+  background: #142636;
+  color: #eaf7f8;
+  font: 13px/1.6 Consolas, "Courier New", monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.configuration-status-pill-error {
+  background: rgba(239, 93, 93, 0.12);
+  color: #b95151;
+}
+
 @media (max-width: 1480px) {
   .login-shell {
     grid-template-columns: minmax(0, 1fr);
@@ -1301,6 +1564,14 @@ input[readonly] {
     flex-direction: column;
   }
 
+  .configuration-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .configuration-preview {
+    min-height: 420px;
+  }
+
   .batch-toolbar-top,
   .contacts-toolbar-top {
     flex-direction: column;
@@ -1340,6 +1611,17 @@ input[readonly] {
 
   .batch-row-grid {
     grid-template-columns: 1fr;
+  }
+
+  .configuration-fields,
+  .configuration-dss-grid,
+  .configuration-w70b-grid,
+  .configuration-row-head {
+    grid-template-columns: 1fr;
+  }
+
+  .configuration-row-head {
+    display: none;
   }
 
   .contacts-table-head,

@@ -77,6 +77,10 @@
             <strong>YMCS Service</strong>
             <p>YMCS-Made By Zura.</p>
           </div>
+          <div class="sidebar-footer">
+            <button id="logout-button" class="secondary-button sidebar-logout-button" type="button">Log Out</button>
+            <div id="session-user" class="session-user hidden"></div>
+          </div>
         </aside>
 
         <section class="table-view">
@@ -86,9 +90,7 @@
               <div id="workspace-title" class="site-pill">NIMBUSIP</div>
             </div>
             <div class="toolbar-actions">
-              <div id="session-user" class="session-user hidden"></div>
               <button id="quick-add-button" class="primary-button" type="button">+ Add</button>
-              <button id="logout-button" class="secondary-button" type="button">Log Out</button>
             </div>
           </header>
 
@@ -316,12 +318,114 @@
           </section>
 
           <section id="configuration-workspace" class="workspace-panel hidden">
-            <div class="hero-card">
+            <div class="hero-card hero-card-configuration">
               <div>
                 <div class="eyebrow">Configuration</div>
-                <h2>Ready for the next step.</h2>
-                <p>This page is reserved for future YMCS configuration actions.</p>
+                <h2>Generate Yealink cfg files in one pass.</h2>
+                <p>Build a plain text Yealink <code>.cfg</code> file with Nimbus defaults, manual Dsskey BLF rows, and a W70B multi-account mode.</p>
               </div>
+              <div class="configuration-hero-side">
+                <img class="configuration-device-image" src="/image/w70b.png" alt="Yealink W70B">
+                <label class="configuration-w70b-toggle">
+                  <input id="config-is-w70b" type="checkbox">
+                  <span>Use W70B logic</span>
+                </label>
+              </div>
+            </div>
+
+            <div class="configuration-grid">
+              <section class="configuration-card">
+                <div class="configuration-card-head">
+                  <div>
+                    <div class="eyebrow">Input</div>
+                    <h3>Configuration Builder</h3>
+                  </div>
+                  <div id="config-status-pill" class="contacts-status-pill contacts-status-pill-ready">Ready</div>
+                </div>
+
+                <div id="config-response-panel" class="response hidden" aria-live="polite">
+                  <div id="config-response-badge" class="response-badge">Pending</div>
+                  <p id="config-response-message" class="response-message"></p>
+                </div>
+
+                <form id="config-form" class="form" novalidate>
+                  <div class="configuration-fields">
+                    <label class="field">
+                      <span>Domain</span>
+                      <div class="domain-shell">
+                        <input id="config-domain" type="text" inputmode="numeric" placeholder="1234" autocomplete="off">
+                        <strong>.nimbusip.com</strong>
+                      </div>
+                      <small class="field-note">Numbers only. Final domain: <code id="config-domain-preview">1234.nimbusip.com</code></small>
+                    </label>
+
+                    <label class="field">
+                      <span>Extension</span>
+                      <input id="config-extension" type="text" placeholder="200" autocomplete="off">
+                    </label>
+
+                    <label class="field">
+                      <span>Password</span>
+                      <input id="config-password" type="text" placeholder="Password" autocomplete="off">
+                    </label>
+                  </div>
+
+                  <div class="configuration-actions">
+                    <button id="config-generate-button" class="primary-button" type="button">Generate Preview</button>
+                    <button id="config-download-button" class="secondary-button" type="button">Download CFG</button>
+                    <button id="config-template-button" class="ghost-button" type="button">Download CFG Temp</button>
+                    <button id="config-dsskey-toggle" class="ghost-button" type="button">Dsskey</button>
+                    <button id="config-dsskey-add" class="ghost-button" type="button">Add BLF Row</button>
+                    <button id="config-w70b-add" class="ghost-button" type="button">Add W70B Account</button>
+                  </div>
+
+                  <section id="config-dsskey-panel" class="configuration-subpanel hidden">
+                    <div class="configuration-subpanel-head">
+                      <div>
+                        <h4>Dsskey BLF</h4>
+                        <p>Manual BLF rows start from <code>linekey.2</code>. Label defaults to the BLF extension and line defaults to <code>1</code>.</p>
+                      </div>
+                    </div>
+                    <div class="configuration-row-head configuration-dss-grid">
+                      <span>Value</span>
+                      <span>Label</span>
+                      <span>Line</span>
+                      <span>Extension</span>
+                      <span>Action</span>
+                    </div>
+                    <div id="config-dsskey-rows" class="configuration-rows"></div>
+                  </section>
+
+                  <section id="config-w70b-panel" class="configuration-subpanel hidden">
+                    <div class="configuration-subpanel-head">
+                      <div>
+                        <h4>W70B Accounts</h4>
+                        <p>Account 1 uses the main Extension and Password fields. Add more SIP accounts below. Empty password override uses the main password.</p>
+                      </div>
+                    </div>
+                    <div class="configuration-inline-note">
+                      <strong>BLF disabled</strong>
+                      <span>When W70B mode is enabled, no Dsskey lines are generated.</span>
+                    </div>
+                    <div class="configuration-row-head configuration-w70b-grid">
+                      <span>Extension</span>
+                      <span>Password Override</span>
+                      <span>Action</span>
+                    </div>
+                    <div id="config-w70b-rows" class="configuration-rows"></div>
+                  </section>
+                </form>
+              </section>
+
+              <section class="configuration-card">
+                <div class="configuration-card-head">
+                  <div>
+                    <div class="eyebrow">Preview</div>
+                    <h3>Generated cfg</h3>
+                  </div>
+                </div>
+                <pre id="config-preview" class="configuration-preview"></pre>
+              </section>
             </div>
           </section>
         </section>
@@ -476,12 +580,22 @@
             <h1>Configuration</h1>
           </header>
           <div class="notice">
-            This section is intentionally empty for now so we can keep the shape ready for the next YMCS features.
+            Generate Yealink <code>.cfg</code> files directly in the browser. This tool validates the domain, previews the result, and downloads plain text config files.
           </div>
           <div class="insight-card">
-            <span class="eyebrow">Status</span>
-            <strong>Placeholder</strong>
-            <p>No backend action is connected here yet.</p>
+            <span class="eyebrow">Static Settings</span>
+            <strong>Download CFG Temp</strong>
+            <p>The template export includes the fixed Nimbus provisioning settings only, without account or BLF values.</p>
+          </div>
+          <div class="insight-card">
+            <span class="eyebrow">Dsskey</span>
+            <strong>Manual BLF rows</strong>
+            <p>Use the Dsskey button to open manual BLF inputs that generate <code>linekey.2</code> and up with type <code>16</code>.</p>
+          </div>
+          <div class="insight-card">
+            <span class="eyebrow">W70B</span>
+            <strong>Multi-account mode</strong>
+            <p>When W70B is checked, the cfg is generated with multiple <code>account.X</code> blocks and no BLF keys.</p>
           </div>
         </section>
       </aside>

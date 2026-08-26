@@ -1,3 +1,12 @@
+import {
+  buildDomain,
+  buildGeneratedConfig,
+  buildTemplateConfig,
+  createDownloadName,
+  normalizeDomainPrefix,
+  validateConfigInput
+} from "./yealink-cfg.js";
+
 const views = ["device", "multiple", "search", "contacts", "configuration"];
 const navButtons = Array.from(document.querySelectorAll("[data-view]"));
 const workspaceTitle = document.querySelector("#workspace-title");
@@ -79,6 +88,28 @@ const contactsResponsePanel = document.querySelector("#contacts-response-panel")
 const contactsResponseBadge = document.querySelector("#contacts-response-badge");
 const contactsResponseMessage = document.querySelector("#contacts-response-message");
 
+const configForm = document.querySelector("#config-form");
+const configDomainInput = document.querySelector("#config-domain");
+const configExtensionInput = document.querySelector("#config-extension");
+const configPasswordInput = document.querySelector("#config-password");
+const configDomainPreview = document.querySelector("#config-domain-preview");
+const configPreview = document.querySelector("#config-preview");
+const configStatusPill = document.querySelector("#config-status-pill");
+const configResponsePanel = document.querySelector("#config-response-panel");
+const configResponseBadge = document.querySelector("#config-response-badge");
+const configResponseMessage = document.querySelector("#config-response-message");
+const configGenerateButton = document.querySelector("#config-generate-button");
+const configDownloadButton = document.querySelector("#config-download-button");
+const configTemplateButton = document.querySelector("#config-template-button");
+const configDsskeyToggleButton = document.querySelector("#config-dsskey-toggle");
+const configDsskeyAddButton = document.querySelector("#config-dsskey-add");
+const configW70bAddButton = document.querySelector("#config-w70b-add");
+const configW70bCheckbox = document.querySelector("#config-is-w70b");
+const configDsskeyPanel = document.querySelector("#config-dsskey-panel");
+const configW70bPanel = document.querySelector("#config-w70b-panel");
+const configDsskeyRows = document.querySelector("#config-dsskey-rows");
+const configW70bRows = document.querySelector("#config-w70b-rows");
+
 const modelCount = document.querySelector("#model-count");
 const siteCount = document.querySelector("#site-count");
 const deviceSiteNote = document.querySelector("#device-site-note");
@@ -101,6 +132,8 @@ let contactsSourceFileName = "";
 let contactItems = [];
 let contactFixedRows = 0;
 let contactSkippedRows = 0;
+let configurationToolInitialized = false;
+let configurationDssExpanded = false;
 
 function setCounterText(element, value) {
   if (element) {
@@ -177,6 +210,273 @@ function resetContactsGenerator() {
   renderContactPreview([]);
 }
 
+function setConfigurationStatus(text, tone = "ready") {
+  configStatusPill.textContent = text;
+  configStatusPill.classList.remove(
+    "contacts-status-pill-ready",
+    "contacts-status-pill-fixed",
+    "configuration-status-pill-error"
+  );
+
+  if (tone === "error") {
+    configStatusPill.classList.add("configuration-status-pill-error");
+    return;
+  }
+
+  configStatusPill.classList.add(tone === "success" ? "contacts-status-pill-ready" : "contacts-status-pill-fixed");
+}
+
+function createConfigurationField(label, controlMarkup) {
+  return `
+    <label class="configuration-mini-field">
+      <span>${label}</span>
+      ${controlMarkup}
+    </label>
+  `;
+}
+
+function createConfigurationDssRow(initialValues = {}) {
+  const row = document.createElement("div");
+  row.className = "configuration-row configuration-dss-grid";
+
+  const lineOptions = Array.from({ length: 10 }, (_, index) => {
+    const value = String(index + 1);
+    const selected = (initialValues.line || "1") === value ? "selected" : "";
+    return `<option value="${value}" ${selected}>Line${value}</option>`;
+  }).join("");
+
+  row.innerHTML = `
+    ${createConfigurationField("Value", `<input data-config-dss-value type="text" inputmode="numeric" value="${escapeHtml(initialValues.value || "")}" placeholder="201">`)}
+    ${createConfigurationField("Label", `<input data-config-dss-label type="text" value="${escapeHtml(initialValues.label || "")}" placeholder="201">`)}
+    ${createConfigurationField("Line", `<select data-config-dss-line>${lineOptions}</select>`)}
+    ${createConfigurationField("Extension", `<input data-config-dss-extension type="text" value="${escapeHtml(initialValues.extension || "**")}" placeholder="**">`)}
+    <button type="button" class="row-remove">Remove</button>
+  `;
+
+  row.addEventListener("input", updateConfigurationPreview);
+  row.addEventListener("change", updateConfigurationPreview);
+  row.querySelector(".row-remove").addEventListener("click", () => {
+    row.remove();
+    updateConfigurationPreview();
+  });
+
+  return row;
+}
+
+function createConfigurationW70bRow(initialValues = {}) {
+  const row = document.createElement("div");
+  row.className = "configuration-row configuration-w70b-grid";
+  row.innerHTML = `
+    ${createConfigurationField("Extension", `<input data-config-w70b-extension type="text" inputmode="numeric" value="${escapeHtml(initialValues.extension || "")}" placeholder="201">`)}
+    ${createConfigurationField("Password Override", `<input data-config-w70b-password type="text" value="${escapeHtml(initialValues.password || "")}" placeholder="Use main password if empty">`)}
+    <button type="button" class="row-remove">Remove</button>
+  `;
+
+  row.addEventListener("input", updateConfigurationPreview);
+  row.addEventListener("change", updateConfigurationPreview);
+  row.querySelector(".row-remove").addEventListener("click", () => {
+    row.remove();
+    updateConfigurationPreview();
+  });
+
+  return row;
+}
+
+function ensureConfigurationStarterRows() {
+  if (!configDsskeyRows.children.length) {
+    configDsskeyRows.append(createConfigurationDssRow());
+  }
+
+  if (!configW70bRows.children.length) {
+    configW70bRows.append(createConfigurationW70bRow());
+  }
+}
+
+function getConfigurationDssRows() {
+  return Array.from(configDsskeyRows.querySelectorAll(".configuration-row")).map((row) => ({
+    value: row.querySelector("[data-config-dss-value]")?.value || "",
+    label: row.querySelector("[data-config-dss-label]")?.value || "",
+    line: row.querySelector("[data-config-dss-line]")?.value || "1",
+    extension: row.querySelector("[data-config-dss-extension]")?.value || "**"
+  }));
+}
+
+function getConfigurationW70bRows() {
+  return Array.from(configW70bRows.querySelectorAll(".configuration-row")).map((row) => ({
+    extension: row.querySelector("[data-config-w70b-extension]")?.value || "",
+    password: row.querySelector("[data-config-w70b-password]")?.value || ""
+  }));
+}
+
+function getConfigurationState() {
+  return {
+    domainPrefix: normalizeDomainPrefix(configDomainInput.value),
+    extension: configExtensionInput.value.trim(),
+    password: configPasswordInput.value.trim(),
+    isW70B: Boolean(configW70bCheckbox.checked),
+    dssKeys: getConfigurationDssRows(),
+    additionalAccounts: getConfigurationW70bRows()
+  };
+}
+
+function syncConfigurationDomainPreview() {
+  configDomainPreview.textContent = buildDomain(configDomainInput.value) || "1234.nimbusip.com";
+}
+
+function syncConfigurationMode() {
+  const isW70B = configW70bCheckbox.checked;
+  configW70bPanel.classList.toggle("hidden", !isW70B);
+  configDsskeyPanel.classList.toggle("hidden", isW70B || !configurationDssExpanded);
+  configDsskeyToggleButton.disabled = isW70B;
+  configDsskeyAddButton.disabled = isW70B;
+  configW70bAddButton.disabled = !isW70B;
+  configDsskeyToggleButton.textContent = isW70B ? "Dsskey Disabled For W70B" : "Dsskey";
+}
+
+function updateConfigurationPreview() {
+  syncConfigurationDomainPreview();
+  syncConfigurationMode();
+
+  const state = getConfigurationState();
+  const validation = validateConfigInput(state);
+
+  if (validation.errors.length > 0) {
+    configPreview.textContent = "Complete the required fields to generate the cfg preview.";
+    configDownloadButton.disabled = true;
+    setConfigurationStatus("Needs Input", "error");
+
+    if (state.domainPrefix || state.extension || state.password || state.isW70B) {
+      setResponseState(
+        configResponsePanel,
+        configResponseBadge,
+        configResponseMessage,
+        false,
+        validation.errors[0]
+      );
+    } else {
+      resetResponseState(configResponsePanel, configResponseMessage);
+    }
+    return;
+  }
+
+  const generated = buildGeneratedConfig(state);
+  configPreview.textContent = generated.content;
+  configDownloadButton.disabled = false;
+  setConfigurationStatus(state.isW70B ? "W70B Ready" : "CFG Ready", "success");
+  setResponseState(
+    configResponsePanel,
+    configResponseBadge,
+    configResponseMessage,
+    true,
+    state.isW70B
+      ? "W70B cfg preview is ready. Extra account passwords use the main password when left empty."
+      : "CFG preview is ready. Dsskey BLF rows start from linekey.2."
+  );
+}
+
+function resetConfigurationTool() {
+  configurationDssExpanded = false;
+  configForm.reset();
+  configDsskeyRows.innerHTML = "";
+  configW70bRows.innerHTML = "";
+  ensureConfigurationStarterRows();
+  configPreview.textContent = "Complete the required fields to generate the cfg preview.";
+  configDownloadButton.disabled = true;
+  resetResponseState(configResponsePanel, configResponseMessage);
+  setConfigurationStatus("Ready", "ready");
+  syncConfigurationDomainPreview();
+  syncConfigurationMode();
+}
+
+function initializeConfigurationTool() {
+  if (configurationToolInitialized) {
+    return;
+  }
+
+  configurationToolInitialized = true;
+  resetConfigurationTool();
+
+  configForm.addEventListener("input", (event) => {
+    if (event.target === configDomainInput) {
+      const digitsOnly = configDomainInput.value.replace(/\D+/g, "");
+      if (digitsOnly !== configDomainInput.value) {
+        configDomainInput.value = digitsOnly;
+      }
+    }
+    updateConfigurationPreview();
+  });
+
+  configForm.addEventListener("change", updateConfigurationPreview);
+
+  configGenerateButton.addEventListener("click", () => {
+    updateConfigurationPreview();
+    configPreview.scrollIntoView({ behavior: "smooth", block: "start" });
+  });
+
+  configTemplateButton.addEventListener("click", () => {
+    downloadTextFile(buildTemplateConfig(), "yealink-static-template.cfg", "text/plain;charset=utf-8");
+    setConfigurationStatus("Template Downloaded", "ready");
+    setResponseState(
+      configResponsePanel,
+      configResponseBadge,
+      configResponseMessage,
+      true,
+      "Static cfg template downloaded."
+    );
+  });
+
+  configDownloadButton.addEventListener("click", () => {
+    const state = getConfigurationState();
+    const generated = buildGeneratedConfig(state);
+
+    if (generated.errors.length > 0) {
+      setConfigurationStatus("Needs Input", "error");
+      setResponseState(
+        configResponsePanel,
+        configResponseBadge,
+        configResponseMessage,
+        false,
+        generated.errors[0]
+      );
+      return;
+    }
+
+    downloadTextFile(generated.content, createDownloadName(state), "text/plain;charset=utf-8");
+    setConfigurationStatus("Downloaded", "success");
+    setResponseState(
+      configResponsePanel,
+      configResponseBadge,
+      configResponseMessage,
+      true,
+      "Generated cfg downloaded."
+    );
+  });
+
+  configDsskeyToggleButton.addEventListener("click", () => {
+    if (configW70bCheckbox.checked) {
+      return;
+    }
+
+    configurationDssExpanded = !configurationDssExpanded;
+    if (configurationDssExpanded && !configDsskeyRows.children.length) {
+      configDsskeyRows.append(createConfigurationDssRow());
+    }
+    syncConfigurationMode();
+  });
+
+  configDsskeyAddButton.addEventListener("click", () => {
+    configurationDssExpanded = true;
+    configDsskeyRows.append(createConfigurationDssRow());
+    syncConfigurationMode();
+    updateConfigurationPreview();
+  });
+
+  configW70bAddButton.addEventListener("click", () => {
+    configW70bRows.append(createConfigurationW70bRow());
+    updateConfigurationPreview();
+  });
+}
+
 function resetAppState() {
   modelItems = [];
   siteItems = [];
@@ -216,6 +516,7 @@ function resetAppState() {
   siteCount.textContent = "0";
   resetSearchCounters();
   resetContactsGenerator();
+  resetConfigurationTool();
   resetResponseState(responsePanel, responseMessage);
   resetResponseState(batchResponsePanel, batchResponseMessage);
   updateInputClearButton(searchInput, searchClearButton);
@@ -1091,6 +1392,7 @@ async function initializeApp() {
   }
 
   appInitialized = true;
+  initializeConfigurationTool();
   activateView("device");
   applyLockedSiteScopeToInputs();
   resetContactsGenerator();
