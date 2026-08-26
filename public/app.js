@@ -56,9 +56,11 @@ const batchSiteNote = document.querySelector("#batch-site-note");
 
 const searchForm = document.querySelector("#search-form");
 const searchInput = document.querySelector("#search-input");
+const searchSubmitButton = document.querySelector("#search-button");
 const searchClearButton = document.querySelector("#search-clear-button");
 const searchFilterInput = document.querySelector("#search-filter-input");
 const searchFilterClearButton = document.querySelector("#search-filter-clear-button");
+const searchLoadingOverlay = document.querySelector("#search-loading-overlay");
 const searchResults = document.querySelector("#search-results");
 const searchScope = document.querySelector("#search-scope");
 const searchScopeTitle = document.querySelector("#search-scope-title");
@@ -130,6 +132,8 @@ let appInitialized = false;
 let currentUser = null;
 let currentView = "device";
 let searchRefreshTimer = null;
+let activeSearchRequestCount = 0;
+let activeManualSearchRequestCount = 0;
 let contactsSourceFileName = "";
 let contactItems = [];
 let contactFixedRows = 0;
@@ -544,6 +548,10 @@ function resetAppState() {
     searchRefreshTimer = null;
   }
 
+  activeSearchRequestCount = 0;
+  activeManualSearchRequestCount = 0;
+  setSearchLoadingState(false);
+
   hideMenu(modelMenu, modelInput);
   hideMenu(siteMenu, siteInput);
   hideMenu(batchSiteMenu, batchSiteInput);
@@ -592,6 +600,20 @@ function setResponseState(panel, badge, messageElement, ok, message) {
 function resetResponseState(panel, messageElement) {
   panel.classList.add("hidden");
   messageElement.textContent = "";
+}
+
+function setSearchLoadingState(isLoading, { showOverlay = false } = {}) {
+  if (showOverlay) {
+    searchLoadingOverlay.classList.toggle("hidden", !isLoading);
+    searchLoadingOverlay.setAttribute("aria-hidden", String(!isLoading));
+  } else if (!isLoading && activeSearchRequestCount === 0) {
+    searchLoadingOverlay.classList.add("hidden");
+    searchLoadingOverlay.setAttribute("aria-hidden", "true");
+  }
+
+  const isManualLoading = activeManualSearchRequestCount > 0;
+  searchSubmitButton.disabled = isManualLoading;
+  searchSubmitButton.textContent = isManualLoading ? "Searching..." : "AI search";
 }
 
 function setAuthView(view) {
@@ -1271,7 +1293,7 @@ function applySearchFilter() {
 }
 
 async function refreshSearchData() {
-  await runSearch(searchInput.value.trim());
+  await runSearch(searchInput.value.trim(), { showOverlay: false });
 }
 
 function syncSearchAutoRefresh() {
@@ -1349,27 +1371,42 @@ async function loadSites(query = "") {
   applyLockedSiteScopeToInputs();
 }
 
-async function runSearch(query = "") {
-  const params = new URLSearchParams({ q: query });
-  const response = await apiFetch(`/api/search?${params.toString()}`);
-  const data = await response.json();
-  searchResultItems = data.items || [];
-
-  if (data.scope) {
-    searchScope.textContent = isAdminUser()
-      ? `Searching across ${data.searchedServers?.length || 0} YMCS servers`
-      : `Searching inside ${data.scope.name}`;
-    searchScopeTitle.textContent = data.scope.name;
-    searchScopeDetails.textContent = data.scope.locked
-      ? `This account can work only inside ${data.scope.name}.`
-      : isAdminUser()
-        ? "Results are merged automatically from all configured admin YMCS accounts."
-        : "Click a status card to show only those devices.";
-  } else {
-    searchScopeDetails.textContent = "Search scope is currently unavailable.";
+async function runSearch(query = "", options = {}) {
+  const showOverlay = options.showOverlay !== false;
+  activeSearchRequestCount += 1;
+  if (showOverlay) {
+    activeManualSearchRequestCount += 1;
   }
+  setSearchLoadingState(true, { showOverlay });
 
-  applySearchFilter();
+  try {
+    const params = new URLSearchParams({ q: query });
+    const response = await apiFetch(`/api/search?${params.toString()}`);
+    const data = await response.json();
+    searchResultItems = data.items || [];
+
+    if (data.scope) {
+      searchScope.textContent = isAdminUser()
+        ? `Searching across ${data.searchedServers?.length || 0} YMCS servers`
+        : `Searching inside ${data.scope.name}`;
+      searchScopeTitle.textContent = data.scope.name;
+      searchScopeDetails.textContent = data.scope.locked
+        ? `This account can work only inside ${data.scope.name}.`
+        : isAdminUser()
+          ? "Results are merged automatically from all configured admin YMCS accounts."
+          : "Click a status card to show only those devices.";
+    } else {
+      searchScopeDetails.textContent = "Search scope is currently unavailable.";
+    }
+
+    applySearchFilter();
+  } finally {
+    activeSearchRequestCount = Math.max(0, activeSearchRequestCount - 1);
+    if (showOverlay) {
+      activeManualSearchRequestCount = Math.max(0, activeManualSearchRequestCount - 1);
+    }
+    setSearchLoadingState(activeSearchRequestCount > 0, { showOverlay });
+  }
 }
 
 function updateInputClearButton(input, button) {
