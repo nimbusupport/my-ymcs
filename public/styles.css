@@ -1261,6 +1261,19 @@ input[readonly] {
   color: #3e9fe7;
 }
 
+.configuration-clear-button {
+  border-color: #f5c17a;
+  background: #fff4e5;
+  color: #b86b09;
+}
+
+.configuration-clear-button:hover {
+  background: #ffe7c4;
+  border-color: #efb45e;
+  color: #9f5b06;
+  box-shadow: 0 12px 24px rgba(239, 180, 94, 0.18);
+}
+
 .shell[data-view="configuration"] {
   --drawer-width: 430px;
 }

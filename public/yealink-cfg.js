@@ -188,7 +188,12 @@ export function buildGeneratedConfig(state) {
 }
 
 export function createDownloadName(state) {
-  const extension = cleanText(state.extension) || "yealink";
-  const mode = state.isW70B ? "w70b" : "desk";
-  return `${extension}-${mode}.cfg`;
+  const domainPrefix = normalizeDomainPrefix(state.domainPrefix) || "yealink";
+  const extension = cleanText(state.extension);
+
+  if (state.isW70B) {
+    return `${domainPrefix}.cfg`;
+  }
+
+  return `${domainPrefix}_${extension || "cfg"}.cfg`;
 }

@@ -100,6 +100,7 @@ const configResponseBadge = document.querySelector("#config-response-badge");
 const configResponseMessage = document.querySelector("#config-response-message");
 const configGenerateButton = document.querySelector("#config-generate-button");
 const configDownloadButton = document.querySelector("#config-download-button");
+const configClearButton = document.querySelector("#config-clear-button");
 const configTemplateButton = document.querySelector("#config-template-button");
 const configDsskeyToggleButton = document.querySelector("#config-dsskey-toggle");
 const configDsskeyAddButton = document.querySelector("#config-dsskey-add");
@@ -422,6 +423,17 @@ function initializeConfigurationTool() {
       configResponseMessage,
       true,
       "Static cfg template downloaded."
+    );
+  });
+
+  configClearButton.addEventListener("click", () => {
+    resetConfigurationTool();
+    setResponseState(
+      configResponsePanel,
+      configResponseBadge,
+      configResponseMessage,
+      true,
+      "Configuration inputs cleared."
     );
   });
 
