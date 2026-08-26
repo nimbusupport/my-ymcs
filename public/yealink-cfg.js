@@ -2,6 +2,12 @@ const FILE_HEADER = "#!version:1.0.0.1";
 const DOMAIN_SUFFIX = ".nimbusip.com";
 const OUTBOUND_PROXY = "213.57.30.66";
 const DSS_KEY_START = 2;
+const TEMPLATE_ACCOUNT_CODEC_LINES = [
+  "account.1.codec.pcmu.enable = 0",
+  "account.1.codec.pcma.priority = 1",
+  "account.1.codec.g729.enable = 0",
+  "account.1.codec.g722.enable = 0",
+];
 
 const STATIC_LINES = [
   "dm.file_upload.http_method = 1",
@@ -95,7 +101,7 @@ function buildDssKeyLines(dssKeys) {
 }
 
 export function buildTemplateConfig() {
-  return withHeader([STATIC_LINES]);
+  return withHeader([[...TEMPLATE_ACCOUNT_CODEC_LINES, ...STATIC_LINES]]);
 }
 
 export function validateConfigInput(state) {
