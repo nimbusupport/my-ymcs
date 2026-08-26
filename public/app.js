@@ -94,6 +94,7 @@ const configExtensionInput = document.querySelector("#config-extension");
 const configPasswordInput = document.querySelector("#config-password");
 const configDomainPreview = document.querySelector("#config-domain-preview");
 const configPreview = document.querySelector("#config-preview");
+const configCopyButton = document.querySelector("#config-copy-button");
 const configStatusPill = document.querySelector("#config-status-pill");
 const configResponsePanel = document.querySelector("#config-response-panel");
 const configResponseBadge = document.querySelector("#config-response-badge");
@@ -227,6 +228,11 @@ function setConfigurationStatus(text, tone = "ready") {
   configStatusPill.classList.add(tone === "success" ? "contacts-status-pill-ready" : "contacts-status-pill-fixed");
 }
 
+function setConfigurationCopyState(enabled) {
+  configCopyButton.disabled = !enabled;
+  configCopyButton.title = enabled ? "Copy cfg preview" : "Generate a cfg preview first";
+}
+
 function createConfigurationField(label, controlMarkup) {
   return `
     <label class="configuration-mini-field">
@@ -344,6 +350,7 @@ function updateConfigurationPreview() {
   if (validation.errors.length > 0) {
     configPreview.textContent = "Complete the required fields to generate the cfg preview.";
     configDownloadButton.disabled = true;
+    setConfigurationCopyState(false);
     setConfigurationStatus("Needs Input", "error");
 
     if (state.domainPrefix || state.extension || state.password || state.isW70B) {
@@ -363,6 +370,7 @@ function updateConfigurationPreview() {
   const generated = buildGeneratedConfig(state);
   configPreview.textContent = generated.content;
   configDownloadButton.disabled = false;
+  setConfigurationCopyState(true);
   setConfigurationStatus(state.isW70B ? "W70B Ready" : "CFG Ready", "success");
   setResponseState(
     configResponsePanel,
@@ -383,6 +391,7 @@ function resetConfigurationTool() {
   ensureConfigurationStarterRows();
   configPreview.textContent = "Complete the required fields to generate the cfg preview.";
   configDownloadButton.disabled = true;
+  setConfigurationCopyState(false);
   resetResponseState(configResponsePanel, configResponseMessage);
   setConfigurationStatus("Ready", "ready");
   syncConfigurationDomainPreview();
@@ -462,6 +471,33 @@ function initializeConfigurationTool() {
       true,
       "Generated cfg downloaded."
     );
+  });
+
+  configCopyButton.addEventListener("click", async () => {
+    const previewText = configPreview.textContent.trim();
+
+    if (!previewText || configCopyButton.disabled) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(previewText);
+      setResponseState(
+        configResponsePanel,
+        configResponseBadge,
+        configResponseMessage,
+        true,
+        "CFG preview copied to clipboard."
+      );
+    } catch (error) {
+      setResponseState(
+        configResponsePanel,
+        configResponseBadge,
+        configResponseMessage,
+        false,
+        "Unable to copy the cfg preview."
+      );
+    }
   });
 
   configDsskeyToggleButton.addEventListener("click", () => {

@@ -326,105 +326,115 @@
               </div>
               <div class="configuration-hero-side">
                 <img class="configuration-device-image" src="/image/w70b.png" alt="Yealink W70B">
-                <label class="configuration-w70b-toggle">
-                  <input id="config-is-w70b" type="checkbox">
-                  <span>Use W70B logic</span>
-                </label>
               </div>
             </div>
 
             <div class="configuration-grid">
-              <section class="configuration-card">
-                <div class="configuration-card-head">
-                  <div>
-                    <div class="eyebrow">Input</div>
-                    <h3>Configuration Builder</h3>
-                  </div>
-                  <div id="config-status-pill" class="contacts-status-pill contacts-status-pill-ready">Ready</div>
-                </div>
-
-                <div id="config-response-panel" class="response hidden" aria-live="polite">
-                  <div id="config-response-badge" class="response-badge">Pending</div>
-                  <p id="config-response-message" class="response-message"></p>
-                </div>
-
-                <form id="config-form" class="form" novalidate>
-                  <div class="configuration-fields">
-                    <label class="field">
-                      <span>Domain</span>
-                      <div class="domain-shell">
-                        <input id="config-domain" type="text" inputmode="numeric" placeholder="1234" autocomplete="off">
-                        <strong>.nimbusip.com</strong>
-                      </div>
-                      <small class="field-note">Numbers only. Demo domain: <code id="config-domain-preview">1234.nimbusip.com</code></small>
-                    </label>
-
-                    <label class="field">
-                      <span>Extension</span>
-                      <input id="config-extension" type="text" placeholder="200" autocomplete="off">
-                    </label>
-
-                    <label class="field">
-                      <span>Password</span>
-                      <input id="config-password" type="text" placeholder="Password" autocomplete="off">
-                    </label>
-                  </div>
-
-                  <div class="configuration-inline-note">
-                    <strong>Security placeholders</strong>
-                    <span>The generated cfg uses placeholder values for the Yealink web passwords. Replace them before provisioning if needed.</span>
-                  </div>
-
-                  <div class="configuration-actions">
-                    <button id="config-generate-button" class="primary-button" type="button">Generate Preview</button>
-                    <button id="config-download-button" class="secondary-button" type="button">Download CFG</button>
-                    <button id="config-template-button" class="ghost-button" type="button">Download CFG Temp</button>
-                    <button id="config-w70b-add" class="ghost-button" type="button">Add W70B Account</button>
-                    <button id="config-dsskey-toggle" class="ghost-button configuration-dsskey-button" type="button">Dsskey</button>
-                    <button id="config-clear-button" class="ghost-button configuration-clear-button" type="button">Clear</button>
-                  </div>
-
-                  <section id="config-dsskey-panel" class="configuration-subpanel hidden">
-                    <div class="configuration-subpanel-head">
-                      <div>
-                        <h4>Dsskey BLF</h4>
-                        <p>Manual BLF rows start from <code>linekey.2</code>. Label defaults to the BLF extension and line defaults to <code>1</code>.</p>
-                      </div>
-                      <button id="config-dsskey-add" class="ghost-button configuration-inline-add-button" type="button">
-                        <span class="configuration-inline-add-icon" aria-hidden="true">+</span>
-                        <span>Add</span>
-                      </button>
+              <form id="config-form" class="form configuration-form" novalidate>
+                <section class="configuration-card configuration-controls-card">
+                  <div class="configuration-controls-sticky">
+                    <div class="configuration-actions">
+                      <button id="config-generate-button" class="primary-button" type="button">Generate Preview</button>
+                      <button id="config-download-button" class="secondary-button" type="button">Download CFG</button>
+                      <button id="config-template-button" class="ghost-button" type="button">Download CFG Temp</button>
+                      <button id="config-w70b-add" class="ghost-button" type="button">Add W70B Account</button>
+                      <button id="config-dsskey-toggle" class="ghost-button configuration-dsskey-button" type="button">Dsskey</button>
+                      <button id="config-clear-button" class="ghost-button configuration-clear-button" type="button">Clear</button>
                     </div>
-                    <div class="configuration-row-head configuration-dss-grid">
-                      <span>Value</span>
-                      <span>Label</span>
-                      <span>Line</span>
-                      <span>Extension</span>
-                      <span>Action</span>
-                    </div>
-                    <div id="config-dsskey-rows" class="configuration-rows"></div>
-                  </section>
 
-                  <section id="config-w70b-panel" class="configuration-subpanel hidden">
-                    <div class="configuration-subpanel-head">
-                      <div>
-                        <h4>W70B Accounts</h4>
-                        <p>Account 1 uses the main Extension and Password fields. Add more SIP accounts below. Empty password override uses the main password.</p>
-                      </div>
-                    </div>
                     <div class="configuration-inline-note">
-                      <strong>BLF disabled</strong>
-                      <span>When W70B mode is enabled, no Dsskey lines are generated.</span>
+                      <strong>Security placeholders</strong>
+                      <span>The generated cfg uses placeholder values for the Yealink web passwords. Replace them before provisioning if needed.</span>
                     </div>
-                    <div class="configuration-row-head configuration-w70b-grid">
-                      <span>Extension</span>
-                      <span>Password Override</span>
-                      <span>Action</span>
+                  </div>
+                </section>
+
+                <section class="configuration-card configuration-builder-card">
+                  <div class="configuration-card-head">
+                    <div>
+                      <div class="eyebrow">Input</div>
+                      <h3>Configuration Builder</h3>
                     </div>
-                    <div id="config-w70b-rows" class="configuration-rows"></div>
-                  </section>
-                </form>
-              </section>
+                    <label class="configuration-w70b-toggle configuration-card-head-toggle">
+                      <input id="config-is-w70b" type="checkbox">
+                      <span>W70B</span>
+                    </label>
+                    <div id="config-status-pill" class="contacts-status-pill contacts-status-pill-ready">Ready</div>
+                  </div>
+
+                  <div id="config-response-panel" class="response hidden" aria-live="polite">
+                    <div id="config-response-badge" class="response-badge">Pending</div>
+                    <p id="config-response-message" class="response-message"></p>
+                  </div>
+
+                  <div class="configuration-builder-layout">
+                    <div class="configuration-controls-window">
+                      <div class="configuration-fields">
+                        <label class="field">
+                          <span>Domain</span>
+                          <div class="domain-shell">
+                            <input id="config-domain" type="text" inputmode="numeric" placeholder="1234" autocomplete="off">
+                            <strong>.nimbusip.com</strong>
+                          </div>
+                          <small class="field-note">Numbers only. Demo domain: <code id="config-domain-preview">1234.nimbusip.com</code></small>
+                        </label>
+
+                        <label class="field">
+                          <span>Extension</span>
+                          <input id="config-extension" type="text" placeholder="200" autocomplete="off">
+                        </label>
+
+                        <label class="field">
+                          <span>Password</span>
+                          <input id="config-password" type="text" placeholder="Password" autocomplete="off">
+                        </label>
+                      </div>
+                    </div>
+
+                    <div class="configuration-detail-panels">
+                      <section id="config-dsskey-panel" class="configuration-subpanel hidden">
+                        <div class="configuration-subpanel-head">
+                          <div>
+                            <h4>Dsskey BLF</h4>
+                            <p>Manual BLF rows start from <code>linekey.2</code>. Label defaults to the BLF extension and line defaults to <code>1</code>.</p>
+                          </div>
+                          <button id="config-dsskey-add" class="ghost-button configuration-inline-add-button" type="button">
+                            <span class="configuration-inline-add-icon" aria-hidden="true">+</span>
+                            <span>Add</span>
+                          </button>
+                        </div>
+                        <div class="configuration-row-head configuration-dss-grid">
+                          <span>Value</span>
+                          <span>Label</span>
+                          <span>Line</span>
+                          <span>Extension</span>
+                          <span>Action</span>
+                        </div>
+                        <div id="config-dsskey-rows" class="configuration-rows"></div>
+                      </section>
+
+                      <section id="config-w70b-panel" class="configuration-subpanel hidden">
+                        <div class="configuration-subpanel-head">
+                          <div>
+                            <h4>W70B Accounts</h4>
+                            <p>Account 1 uses the main Extension and Password fields. Add more SIP accounts below. Empty password override uses the main password.</p>
+                          </div>
+                        </div>
+                        <div class="configuration-inline-note">
+                          <strong>BLF disabled</strong>
+                          <span>When W70B mode is enabled, no Dsskey lines are generated.</span>
+                        </div>
+                        <div class="configuration-row-head configuration-w70b-grid">
+                          <span>Extension</span>
+                          <span>Password Override</span>
+                          <span>Action</span>
+                        </div>
+                        <div id="config-w70b-rows" class="configuration-rows"></div>
+                      </section>
+                    </div>
+                  </div>
+                </section>
+              </form>
 
               <section class="configuration-card">
                 <div class="configuration-card-head">
@@ -432,6 +442,9 @@
                     <div class="eyebrow">Preview</div>
                     <h3>Generated cfg</h3>
                   </div>
+                  <button id="config-copy-button" class="ghost-button configuration-copy-button" type="button" aria-label="Copy cfg preview">
+                    <span class="configuration-copy-icon" aria-hidden="true"></span>
+                  </button>
                 </div>
                 <pre id="config-preview" class="configuration-preview"></pre>
               </section>
