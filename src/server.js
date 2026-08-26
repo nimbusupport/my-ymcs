@@ -263,19 +263,7 @@ function getUserFromSessionCookie(req) {
     return null;
   }
 
-  const normalizedEmail = String(payload.email).trim().toLowerCase();
-  const userSiteScope = getUserSiteScope(normalizedEmail);
-
-  if (normalizedEmail !== adminEmail && !userSiteScope) {
-    return null;
-  }
-
-  return {
-    email: normalizedEmail,
-    role: normalizedEmail === adminEmail ? "admin" : "worker",
-    authProvider: String(payload.authProvider || "supabase").trim(),
-    siteScope: userSiteScope
-  };
+  return buildAuthorizedUser([payload.email], payload.authProvider);
 }
 
 function getAuthUser(req) {
@@ -284,6 +272,32 @@ function getAuthUser(req) {
 
 function getUserSiteScope(email) {
   return userSiteScopeMap.get(String(email || "").trim().toLowerCase()) || null;
+}
+
+function normalizeEmail(email) {
+  return String(email || "").trim().toLowerCase();
+}
+
+function buildAuthorizedUser(emailCandidates = [], authProvider = "supabase") {
+  const candidates = Array.from(new Set(
+    emailCandidates
+      .map((email) => normalizeEmail(email))
+      .filter(Boolean)
+  ));
+
+  for (const email of candidates) {
+    const userSiteScope = getUserSiteScope(email);
+    if (email === adminEmail || userSiteScope) {
+      return {
+        email,
+        role: email === adminEmail ? "admin" : "worker",
+        authProvider: String(authProvider || "supabase").trim(),
+        siteScope: userSiteScope
+      };
+    }
+  }
+
+  return null;
 }
 
 function getAvailableSearchServers(user) {
@@ -872,23 +886,17 @@ async function handleRequest(req, res) {
       }
 
       const authResult = await signInWithSupabase(email, password);
-      const normalizedEmail = String(authResult?.user?.email || email).trim().toLowerCase();
-      const userSiteScope = getUserSiteScope(normalizedEmail);
+      const providerEmail = normalizeEmail(authResult?.user?.email);
+      const user = buildAuthorizedUser([providerEmail, email], "supabase");
 
-      if (normalizedEmail !== adminEmail && !userSiteScope) {
+      if (!user) {
+        const recognizedEmail = providerEmail || email;
         sendJson(res, 403, {
           ok: false,
-          message: "This account does not have admin access."
+          message: `This account is not allowed for this app. Signed in as ${recognizedEmail}.`
         });
         return;
       }
-
-      const user = {
-        email: normalizedEmail,
-        role: normalizedEmail === adminEmail ? "admin" : "worker",
-        authProvider: "supabase",
-        siteScope: userSiteScope
-      };
 
       const cookie = createCookie(
         sessionCookieName,
