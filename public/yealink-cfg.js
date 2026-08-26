@@ -19,8 +19,8 @@ const STATIC_LINES = [
   "syslog.dm.enable = 0",
   "transfer.dsskey_deal_type = 1",
   "voice.handfree.spk_vol = 14",
-  "security.user_password = admin:N2mbusIP",
-  "security.user_password = user:N1mbusIP",
+  "security.user_password = admin:CHANGE_ME_ADMIN_PASSWORD",
+  "security.user_password = user:CHANGE_ME_USER_PASSWORD",
   "static.auto_provision.server.url = https://eu-resource.ymcs.yealink.com/hardware/autop/$MAC.boot",
   "static.auto_provision.server.username = admin",
 ];
