@@ -13,6 +13,11 @@ const workspaceTitle = document.querySelector("#workspace-title");
 const quickAddButton = document.querySelector("#quick-add-button");
 const logoutButton = document.querySelector("#logout-button");
 const sessionUser = document.querySelector("#session-user");
+const confirmModal = document.querySelector("#confirm-modal");
+const confirmModalTitle = document.querySelector("#confirm-modal-title");
+const confirmModalMessage = document.querySelector("#confirm-modal-message");
+const confirmModalConfirmButton = document.querySelector("#confirm-modal-confirm");
+const confirmModalCancelButton = document.querySelector("#confirm-modal-cancel");
 
 const authLoading = document.querySelector("#auth-loading");
 const loginShell = document.querySelector("#login-shell");
@@ -140,11 +145,64 @@ let contactFixedRows = 0;
 let contactSkippedRows = 0;
 let configurationToolInitialized = false;
 let configurationDssExpanded = false;
+let confirmModalResolver = null;
+let confirmModalPreviousFocus = null;
 
 function setCounterText(element, value) {
   if (element) {
     element.textContent = String(value);
   }
+}
+
+function closeConfirmModal(confirmed) {
+  if (!confirmModalResolver) {
+    return;
+  }
+
+  const resolve = confirmModalResolver;
+  confirmModalResolver = null;
+  confirmModal.classList.add("hidden");
+  confirmModal.setAttribute("aria-hidden", "true");
+  document.body.classList.remove("modal-open");
+
+  const previousFocus = confirmModalPreviousFocus;
+  confirmModalPreviousFocus = null;
+  if (previousFocus instanceof HTMLElement) {
+    previousFocus.focus();
+  }
+
+  resolve(Boolean(confirmed));
+}
+
+function showConfirmModal({
+  title,
+  message,
+  confirmLabel = "Confirm",
+  cancelLabel = "Cancel"
+}) {
+  if (!confirmModal || !confirmModalTitle || !confirmModalMessage || !confirmModalConfirmButton || !confirmModalCancelButton) {
+    return Promise.resolve(window.confirm(message || title || "Are you sure?"));
+  }
+
+  if (confirmModalResolver) {
+    closeConfirmModal(false);
+  }
+
+  confirmModalPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  confirmModalTitle.textContent = title;
+  confirmModalMessage.textContent = message;
+  confirmModalConfirmButton.textContent = confirmLabel;
+  confirmModalCancelButton.textContent = cancelLabel;
+  confirmModal.classList.remove("hidden");
+  confirmModal.setAttribute("aria-hidden", "false");
+  document.body.classList.add("modal-open");
+
+  return new Promise((resolve) => {
+    confirmModalResolver = resolve;
+    window.requestAnimationFrame(() => {
+      confirmModalConfirmButton.focus();
+    });
+  });
 }
 
 function resetSearchCounters() {
@@ -876,13 +934,101 @@ function renderSites(menu, input, hiddenInput, stateSetter) {
   );
 }
 
+function findModelItem(value) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const normalizedValue = normalizeCatalogText(trimmed);
+  const upperValue = trimmed.toUpperCase();
+  return modelItems.find((item) => (
+    String(item.modelId || "").trim().toUpperCase() === upperValue ||
+    normalizeCatalogText(item.shortType) === normalizedValue
+  )) || null;
+}
+
+function getFilteredModelCatalogItems(query = "") {
+  const needle = normalizeCatalogText(query);
+
+  if (!needle) {
+    return modelItems.slice();
+  }
+
+  return modelItems
+    .filter((item) => {
+      const shortTypeKey = normalizeCatalogText(item.shortType);
+      const modelIdKey = String(item.modelId || "").trim().toUpperCase();
+      return shortTypeKey.includes(needle) || modelIdKey.includes(needle);
+    })
+    .sort((left, right) => {
+      const getScore = (item) => {
+        const shortTypeKey = normalizeCatalogText(item.shortType);
+        const modelIdKey = String(item.modelId || "").trim().toUpperCase();
+
+        if (shortTypeKey === needle) {
+          return 0;
+        }
+
+        if (modelIdKey === needle) {
+          return 1;
+        }
+
+        if (shortTypeKey.startsWith(needle)) {
+          return 2;
+        }
+
+        if (shortTypeKey.includes(needle)) {
+          return 3;
+        }
+
+        if (modelIdKey.startsWith(needle)) {
+          return 4;
+        }
+
+        return 5;
+      };
+
+      const scoreDifference = getScore(left) - getScore(right);
+      if (scoreDifference !== 0) {
+        return scoreDifference;
+      }
+
+      const lengthDifference = String(left.shortType || "").length - String(right.shortType || "").length;
+      if (lengthDifference !== 0) {
+        return lengthDifference;
+      }
+
+      return String(left.shortType || "").localeCompare(String(right.shortType || ""));
+    });
+}
+
 function findModelOption(value) {
   if (!value) {
     return "";
   }
 
-  const matched = modelItems.find((item) => item.modelId === value || item.shortType.toLowerCase() === value.toLowerCase());
+  const matched = findModelItem(value);
   return matched ? matched.modelId : value;
+}
+
+function getModelDisplayValue(value) {
+  const matched = findModelItem(value);
+  return matched ? matched.shortType : String(value || "");
+}
+
+function resolveBatchModelValue(value) {
+  const exactMatch = findModelItem(value);
+  if (exactMatch) {
+    return exactMatch.modelId || String(value || "").trim();
+  }
+
+  const filteredItems = getFilteredModelCatalogItems(value);
+  if (filteredItems.length === 1) {
+    return filteredItems[0].modelId || String(value || "").trim();
+  }
+
+  return String(value || "").trim();
 }
 
 function buildSuccessMessage(payload) {
@@ -897,24 +1043,32 @@ function createBatchRow(initialValues = {}) {
   row.className = "batch-row";
   row.dataset.rowId = String(batchRowSequence);
 
-  const modelOptions = modelItems
-    .map((item) => `<option value="${item.modelId}">${escapeHtml(item.shortType)}</option>`)
-    .join("");
-
   row.innerHTML = `
     <div class="batch-row-grid">
       <input type="text" name="name" placeholder="Device name" value="${escapeHtml(initialValues.name || "")}">
       <input type="text" name="mac" placeholder="MAC" value="${escapeHtml(initialValues.mac || "")}">
       <input type="text" name="sn" placeholder="Serial number" value="${escapeHtml(initialValues.sn || "")}">
-      <select name="modelId">
-        <option value="">Select model</option>
-        ${modelOptions}
-      </select>
+      <div class="combo batch-model-combo">
+        <div class="combo-shell">
+          <input
+            type="text"
+            name="batchModelInput"
+            data-batch-model-input
+            placeholder="Type model name or modelId"
+            autocomplete="off"
+            aria-expanded="false"
+            value="${escapeHtml(getModelDisplayValue(initialValues.modelId || ""))}"
+          >
+          <input type="hidden" name="modelId" value="${escapeHtml(findModelOption(initialValues.modelId || ""))}">
+          <button type="button" class="combo-toggle" data-batch-model-toggle aria-label="Toggle model list"></button>
+        </div>
+        <div class="combo-menu hidden" data-batch-model-menu role="listbox"></div>
+      </div>
       <button type="button" class="row-remove">Remove</button>
     </div>
   `;
 
-  row.querySelector("[name='modelId']").value = initialValues.modelId || "";
+  bindBatchModelCombo(row);
   row.addEventListener("input", updateBatchReadyCount);
   row.addEventListener("change", updateBatchReadyCount);
   row.querySelector(".row-remove").addEventListener("click", () => {
@@ -922,7 +1076,7 @@ function createBatchRow(initialValues = {}) {
       row.querySelectorAll("input").forEach((input) => {
         input.value = "";
       });
-      row.querySelector("[name='modelId']").value = "";
+      hideBatchModelMenu(row);
     } else {
       row.remove();
     }
@@ -943,7 +1097,8 @@ function getBatchPayload() {
       name: row.querySelector("[name='name']").value.trim(),
       mac: row.querySelector("[name='mac']").value.trim(),
       sn: row.querySelector("[name='sn']").value.trim(),
-      modelInput: row.querySelector("[name='modelId']").value.trim(),
+      modelInput: row.querySelector("[name='modelId']").value.trim()
+        || resolveBatchModelValue(row.querySelector("[data-batch-model-input]")?.value.trim() || ""),
       siteId: sharedSiteId
     }))
     .filter((item) => item.name || item.mac || item.sn || item.modelInput);
@@ -981,6 +1136,125 @@ function resetBatchForm() {
   }
   resetResponseState(batchResponsePanel, batchResponseMessage);
   updateBatchReadyCount();
+}
+
+function hideBatchModelMenu(row) {
+  const input = row.querySelector("[data-batch-model-input]");
+  const menu = row.querySelector("[data-batch-model-menu]");
+
+  if (!input || !menu) {
+    return;
+  }
+
+  hideMenu(menu, input);
+  row.dataset.modelActiveIndex = "-1";
+}
+
+function renderBatchModelMenu(row, query = "") {
+  const input = row.querySelector("[data-batch-model-input]");
+  const hiddenInput = row.querySelector("[name='modelId']");
+  const menu = row.querySelector("[data-batch-model-menu]");
+
+  if (!input || !hiddenInput || !menu) {
+    return;
+  }
+
+  const items = getFilteredModelCatalogItems(query);
+  renderComboMenu(
+    menu,
+    items.map((item) => ({ ...item, label: item.shortType })),
+    "No matching model. You can still paste a raw modelId.",
+    (item) => {
+      input.value = item.shortType;
+      hiddenInput.value = item.modelId || "";
+      hideBatchModelMenu(row);
+      updateBatchReadyCount();
+    }
+  );
+
+  const nextActiveIndex = normalizeCatalogText(query) && items.length > 0 ? 0 : -1;
+  row.dataset.modelActiveIndex = String(nextActiveIndex);
+  setActiveOption(menu, nextActiveIndex);
+}
+
+function bindBatchModelCombo(row) {
+  const input = row.querySelector("[data-batch-model-input]");
+  const hiddenInput = row.querySelector("[name='modelId']");
+  const menu = row.querySelector("[data-batch-model-menu]");
+  const toggle = row.querySelector("[data-batch-model-toggle]");
+
+  if (!input || !hiddenInput || !menu || !toggle) {
+    return;
+  }
+
+  row.dataset.modelActiveIndex = "-1";
+
+  toggle.addEventListener("click", () => {
+    if (menu.classList.contains("hidden")) {
+      renderBatchModelMenu(row, input.value.trim());
+      showMenu(menu, input);
+      return;
+    }
+
+    hideBatchModelMenu(row);
+  });
+
+  input.addEventListener("focus", () => {
+    renderBatchModelMenu(row, input.value.trim());
+    showMenu(menu, input);
+  });
+
+  input.addEventListener("input", () => {
+    hiddenInput.value = "";
+    renderBatchModelMenu(row, input.value.trim());
+    showMenu(menu, input);
+  });
+
+  input.addEventListener("keydown", (event) => {
+    const nextIndex = handleComboKeys(event, menu, {
+      activeIndex: Number(row.dataset.modelActiveIndex || -1),
+      input
+    });
+
+    if (nextIndex === null) {
+      return;
+    }
+
+    row.dataset.modelActiveIndex = String(nextIndex);
+    setActiveOption(menu, nextIndex);
+  });
+}
+
+function hasPendingBatchDraft() {
+  return Array.from(batchRows.querySelectorAll(".batch-row")).some((row) => (
+    row.querySelector("[name='name']")?.value.trim() ||
+    row.querySelector("[name='mac']")?.value.trim() ||
+    row.querySelector("[name='sn']")?.value.trim() ||
+    row.querySelector("[data-batch-model-input]")?.value.trim()
+  ));
+}
+
+async function requestViewChange(view) {
+  if (!view || view === currentView) {
+    return;
+  }
+
+  if (currentView === "multiple" && view !== "multiple" && hasPendingBatchDraft()) {
+    const confirmed = await showConfirmModal({
+      title: "Reset current batch?",
+      message: "Switching tasks will reset all Multiple Devices row inputs. Are you sure you want to continue?",
+      confirmLabel: "Yes, continue",
+      cancelLabel: "No, stay here"
+    });
+
+    if (!confirmed) {
+      return;
+    }
+
+    resetBatchForm();
+  }
+
+  activateView(view);
 }
 
 function parseCsv(text) {
@@ -1332,10 +1606,7 @@ async function loadModels(query = "") {
     rerenderBatchRows();
   }
 
-  const needle = normalizeCatalogText(query);
-  filteredModelItems = needle
-    ? modelItems.filter((item) => normalizeCatalogText(item.shortType).includes(needle))
-    : modelItems;
+  filteredModelItems = getFilteredModelCatalogItems(query);
   renderModels();
 }
 
@@ -1530,10 +1801,31 @@ async function bootstrapSession() {
 }
 
 navButtons.forEach((button) => {
-  button.addEventListener("click", () => activateView(button.dataset.view));
+  button.addEventListener("click", () => requestViewChange(button.dataset.view));
 });
 
-quickAddButton.addEventListener("click", () => activateView("device"));
+quickAddButton.addEventListener("click", () => requestViewChange("device"));
+
+confirmModalConfirmButton?.addEventListener("click", () => {
+  closeConfirmModal(true);
+});
+
+confirmModalCancelButton?.addEventListener("click", () => {
+  closeConfirmModal(false);
+});
+
+confirmModal?.addEventListener("click", (event) => {
+  if (event.target === confirmModal) {
+    closeConfirmModal(false);
+  }
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && confirmModalResolver && confirmModal && !confirmModal.classList.contains("hidden")) {
+    event.preventDefault();
+    closeConfirmModal(false);
+  }
+});
 
 logoutButton.addEventListener("click", async () => {
   logoutButton.disabled = true;
@@ -1747,6 +2039,13 @@ document.addEventListener("click", (event) => {
     hideMenu(batchSiteMenu, batchSiteInput);
     batchSiteActiveIndex = -1;
   }
+
+  batchRows.querySelectorAll(".batch-row").forEach((row) => {
+    const combo = row.querySelector(".batch-model-combo");
+    if (combo && !combo.contains(event.target)) {
+      hideBatchModelMenu(row);
+    }
+  });
 });
 
 deviceForm.addEventListener("reset", () => {

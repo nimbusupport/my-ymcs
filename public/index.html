@@ -631,6 +631,23 @@
       </aside>
     </main>
 
+    <div id="confirm-modal" class="modal-backdrop hidden" aria-hidden="true">
+      <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" aria-describedby="confirm-modal-message">
+        <div class="modal-accent" aria-hidden="true"></div>
+        <div class="modal-body">
+          <div class="modal-eyebrow">Confirmation</div>
+          <h2 id="confirm-modal-title" class="modal-title">Discard current batch?</h2>
+          <p id="confirm-modal-message" class="modal-message">
+            Switching tasks will reset all Multiple Devices row inputs. Are you sure you want to continue?
+          </p>
+          <div class="modal-actions">
+            <button id="confirm-modal-confirm" class="primary-button" type="button">Yes, continue</button>
+            <button id="confirm-modal-cancel" class="secondary-button" type="button">No, stay here</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>
