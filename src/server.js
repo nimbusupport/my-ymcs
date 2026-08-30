@@ -4,7 +4,7 @@ import http from "http";
 import { readFile } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { addDevice, addDevices, listDevices, listModels, listSites } from "./lib/ymcsClient.js";
+import { addDevice, addDevices, listDevices, listModels, listSites, normalizeMac } from "./lib/ymcsClient.js";
 import { phoneModels, searchPhoneModels } from "./config/deviceModels.js";
 
 dotenv.config();
@@ -776,16 +776,120 @@ function mapBatchMessage(result) {
   const successCount = Number(result?.payload?.successCount ?? 0);
   const failureCount = Number(result?.payload?.failureCount ?? 0);
   const total = Number(result?.payload?.total ?? result?.requestBody?.length ?? successCount + failureCount);
+  const errorDetails = getBatchErrorDetails(result?.payload);
 
   if (total > 0 && failureCount === 0 && successCount === total) {
     return `${successCount} devices created successfully.`;
   }
 
   if (successCount > 0 || failureCount > 0) {
-    return `${successCount} devices created, ${failureCount} failed.`;
+    const summary = `${successCount} devices created, ${failureCount} failed.`;
+    return errorDetails.length > 0 ? `${summary} YMCS: ${errorDetails.join(" | ")}` : summary;
+  }
+
+  if (errorDetails.length > 0) {
+    return `YMCS: ${errorDetails.join(" | ")}`;
   }
 
   return result?.message || "Batch request completed.";
+}
+
+function getBatchErrorDetails(payload) {
+  const rawErrors = Array.isArray(payload?.errors) ? payload.errors : [];
+
+  return rawErrors
+    .map((entry) => {
+      if (typeof entry === "string") {
+        return entry.trim();
+      }
+
+      if (!entry || typeof entry !== "object") {
+        return "";
+      }
+
+      const message = String(
+        entry.message
+        || entry.msg
+        || entry.error
+        || entry.errorMessage
+        || ""
+      ).trim();
+      const mac = String(entry.mac || entry.deviceMac || "").trim();
+      const serial = String(entry.sn || entry.serial || "").trim();
+      const rowIndex = Number.isInteger(entry.index) ? entry.index + 1 : null;
+      const context = [
+        rowIndex ? `row ${rowIndex}` : "",
+        mac ? `MAC ${mac}` : "",
+        serial ? `SN ${serial}` : ""
+      ].filter(Boolean).join(", ");
+
+      if (context && message) {
+        return `${context}: ${message}`;
+      }
+
+      return message || context;
+    })
+    .filter(Boolean);
+}
+
+function getBatchFailureRows(result) {
+  const requestBody = Array.isArray(result?.requestBody) ? result.requestBody : [];
+  const rawErrors = Array.isArray(result?.payload?.errors) ? result.payload.errors : [];
+  const usedIndexes = new Set();
+
+  return rawErrors
+    .map((entry) => resolveBatchFailureRowIndex(entry, requestBody, usedIndexes))
+    .filter((index) => Number.isInteger(index));
+}
+
+function resolveBatchFailureRowIndex(entry, requestBody, usedIndexes) {
+  if (!entry || typeof entry !== "object") {
+    return null;
+  }
+
+  const directIndex = Number(entry.index);
+  if (Number.isInteger(directIndex) && directIndex >= 0 && directIndex < requestBody.length && !usedIndexes.has(directIndex)) {
+    usedIndexes.add(directIndex);
+    return directIndex;
+  }
+
+  const targetMac = normalizeMac(entry.mac || entry.deviceMac || "");
+  const targetSn = String(entry.sn || entry.serial || "").trim();
+
+  for (let index = 0; index < requestBody.length; index += 1) {
+    if (usedIndexes.has(index)) {
+      continue;
+    }
+
+    const item = requestBody[index] || {};
+    const itemMac = normalizeMac(item.mac || "");
+    const itemSn = String(item.sn || "").trim();
+    const macMatches = targetMac ? itemMac === targetMac : true;
+    const snMatches = targetSn ? itemSn === targetSn : true;
+
+    if (macMatches && snMatches && (targetMac || targetSn)) {
+      usedIndexes.add(index);
+      return index;
+    }
+  }
+
+  return null;
+}
+
+function isBatchSuccessful(result) {
+  if (!result?.ok) {
+    return false;
+  }
+
+  const successCount = Number(result?.payload?.successCount ?? 0);
+  const failureCount = Number(result?.payload?.failureCount ?? 0);
+  const total = Number(result?.payload?.total ?? result?.requestBody?.length ?? successCount + failureCount);
+
+  if (total > 0) {
+    return failureCount === 0 && successCount === total;
+  }
+
+  return failureCount === 0;
 }
 
 async function getYmcsDevices(env = process.env) {
@@ -1108,9 +1212,13 @@ async function handleRequest(req, res) {
         expiresAt: 0,
         items: []
       };
+      const batchOk = isBatchSuccessful(result);
+      const failedRows = getBatchFailureRows(result);
 
       sendJson(res, result.ok ? 200 : result.status || 502, {
         ...result,
+        ok: batchOk,
+        failedRows,
         message: mapBatchMessage(result)
       });
     } catch (error) {

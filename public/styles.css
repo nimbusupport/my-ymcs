@@ -1308,6 +1308,13 @@ input[readonly] {
   border-radius: 16px;
   border: 1px solid var(--line);
   background: #fbfdff;
+  transition: border-color 0.16s ease, background-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.batch-row-invalid {
+  background: #fff1f1;
+  border-color: var(--line);
+  box-shadow: none;
 }
 
 .batch-row-grid {

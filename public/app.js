@@ -1037,6 +1037,143 @@ function buildSuccessMessage(payload) {
   return `Device "${model}"  Mac: "${mac}"  Device created successfully.`;
 }
 
+function normalizeBatchMac(value) {
+  return String(value ?? "").replace(/[^a-fA-F0-9]/g, "").toLowerCase();
+}
+
+function getBatchRowInputs(row) {
+  return {
+    name: row.querySelector("[name='name']"),
+    mac: row.querySelector("[name='mac']"),
+    sn: row.querySelector("[name='sn']"),
+    model: row.querySelector("[data-batch-model-input]"),
+    modelId: row.querySelector("[name='modelId']")
+  };
+}
+
+function hasBatchRowContent(row) {
+  const inputs = getBatchRowInputs(row);
+  return Boolean(
+    inputs.name?.value.trim()
+    || inputs.mac?.value.trim()
+    || inputs.sn?.value.trim()
+    || inputs.model?.value.trim()
+    || inputs.modelId?.value.trim()
+  );
+}
+
+function setBatchInputValidity(input, isInvalid) {
+  if (!input) {
+    return;
+  }
+
+  void isInvalid;
+  input.classList.remove("batch-field-invalid");
+  input.removeAttribute("aria-invalid");
+}
+
+function clearBatchRowValidation(row) {
+  row.classList.remove("batch-row-invalid");
+  const inputs = getBatchRowInputs(row);
+  setBatchInputValidity(inputs.mac, false);
+  setBatchInputValidity(inputs.sn, false);
+}
+
+function syncBatchRowValidation(row) {
+  if (!row) {
+    return { hasContent: false, valid: true };
+  }
+
+  const inputs = getBatchRowInputs(row);
+  const hasContent = hasBatchRowContent(row);
+
+  if (!hasContent) {
+    clearBatchRowValidation(row);
+    return { hasContent: false, valid: true };
+  }
+
+  const normalizedMac = normalizeBatchMac(inputs.mac?.value);
+  const serialValue = inputs.sn?.value.trim() || "";
+  const macInvalid = normalizedMac.length < 12 || normalizedMac.length > 17;
+  const snInvalid = !serialValue || serialValue.length > 128;
+  const invalid = macInvalid || snInvalid;
+
+  row.classList.toggle("batch-row-invalid", invalid);
+  setBatchInputValidity(inputs.mac, macInvalid);
+  setBatchInputValidity(inputs.sn, snInvalid);
+
+  return {
+    hasContent,
+    valid: !invalid,
+    macInvalid,
+    snInvalid
+  };
+}
+
+function validateBatchRows() {
+  const invalidRows = [];
+  let populatedRowCount = 0;
+
+  Array.from(batchRows.querySelectorAll(".batch-row")).forEach((row, index) => {
+    const validation = syncBatchRowValidation(row);
+    if (validation.hasContent) {
+      populatedRowCount += 1;
+    }
+
+    if (!validation.valid) {
+      invalidRows.push(index + 1);
+    }
+  });
+
+  return {
+    populatedRowCount,
+    invalidRows
+  };
+}
+
+function rebuildBatchRows(items = [], options = {}) {
+  const highlightIndexes = new Set(Array.isArray(options.highlightIndexes) ? options.highlightIndexes : []);
+  batchRows.innerHTML = "";
+
+  const nextRows = items.length > 0 ? items : [{}];
+  nextRows.forEach((item, index) => {
+    const row = createBatchRow({
+      name: item.name,
+      mac: item.mac,
+      sn: item.sn,
+      modelId: item.modelInput || item.modelId
+    });
+    if (highlightIndexes.has(index)) {
+      row.classList.add("batch-row-invalid");
+    }
+    batchRows.append(row);
+  });
+
+  updateBatchReadyCount();
+}
+
+function keepOnlyFailedBatchRows(submittedDevices, failedRows) {
+  const failedIndexes = Array.from(new Set(
+    (Array.isArray(failedRows) ? failedRows : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value >= 0 && value < submittedDevices.length)
+  ));
+
+  if (failedIndexes.length === 0) {
+    return false;
+  }
+
+  rebuildBatchRows(
+    failedIndexes.map((index) => submittedDevices[index]),
+    { highlightIndexes: failedIndexes.map((_, index) => index) }
+  );
+  return true;
+}
+
+function getBatchSuccessCount(payload) {
+  return Number(payload?.payload?.successCount ?? 0);
+}
+
 function createBatchRow(initialValues = {}) {
   batchRowSequence += 1;
   const row = document.createElement("div");
@@ -1069,20 +1206,28 @@ function createBatchRow(initialValues = {}) {
   `;
 
   bindBatchModelCombo(row);
-  row.addEventListener("input", updateBatchReadyCount);
-  row.addEventListener("change", updateBatchReadyCount);
+  row.addEventListener("input", () => {
+    syncBatchRowValidation(row);
+    updateBatchReadyCount();
+  });
+  row.addEventListener("change", () => {
+    syncBatchRowValidation(row);
+    updateBatchReadyCount();
+  });
   row.querySelector(".row-remove").addEventListener("click", () => {
     if (batchRows.children.length === 1) {
       row.querySelectorAll("input").forEach((input) => {
         input.value = "";
       });
       hideBatchModelMenu(row);
+      clearBatchRowValidation(row);
     } else {
       row.remove();
     }
     updateBatchReadyCount();
   });
 
+  syncBatchRowValidation(row);
   return row;
 }
 
@@ -1110,31 +1255,23 @@ function updateBatchReadyCount() {
 
 function rerenderBatchRows() {
   const previous = getBatchPayload();
-  batchRows.innerHTML = "";
-  const nextRows = previous.length > 0 ? previous : [{}];
-
-  nextRows.forEach((item) => {
-    batchRows.append(createBatchRow({
-      name: item.name,
-      mac: item.mac,
-      sn: item.sn,
-      modelId: item.modelInput
-    }));
-  });
-
-  updateBatchReadyCount();
+  rebuildBatchRows(previous);
 }
 
-function resetBatchForm() {
+function resetBatchForm(options = {}) {
+  const preserveSiteSelection = options.preserveSiteSelection === true;
+  const keepResponseMessage = options.keepResponseMessage === true;
   batchRows.innerHTML = "";
   batchRows.append(createBatchRow());
   if (isLockedSiteUser()) {
     applyLockedSiteScopeToInputs();
-  } else {
+  } else if (!preserveSiteSelection) {
     batchSiteInput.value = "";
     selectedBatchSiteIdInput.value = "";
   }
-  resetResponseState(batchResponsePanel, batchResponseMessage);
+  if (!keepResponseMessage) {
+    resetResponseState(batchResponsePanel, batchResponseMessage);
+  }
   updateBatchReadyCount();
 }
 
@@ -2107,19 +2244,29 @@ batchForm.addEventListener("reset", () => {
 });
 
 async function submitBatchForm() {
-  const batchSiteId = getSelectedBatchSiteId();
-  const devices = getBatchPayload();
+  const validation = validateBatchRows();
 
+  if (validation.populatedRowCount === 0) {
+    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, "Add at least one device row before saving.");
+    return;
+  }
+
+  if (validation.invalidRows.length > 0) {
+    const rowLabel = validation.invalidRows.length === 1
+      ? `row ${validation.invalidRows[0]}`
+      : `rows ${validation.invalidRows.join(", ")}`;
+    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, `Fix the highlighted MAC or Serial fields on ${rowLabel} before saving.`);
+    return;
+  }
+
+  const batchSiteId = getSelectedBatchSiteId();
   if (!batchSiteId) {
     setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, "Choose one site for the whole batch before saving.");
     return;
   }
 
-  if (devices.length === 0) {
-    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, "Add at least one device row before saving.");
-    return;
-  }
-
+  const devices = getBatchPayload();
+  const submittedDevices = devices.map((device) => ({ ...device }));
   batchSaveButton.disabled = true;
   batchSaveButton.textContent = "Saving...";
 
@@ -2134,7 +2281,18 @@ async function submitBatchForm() {
     const data = await response.json();
     setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, Boolean(data.ok), data.message || "Batch request completed.");
     if (data.ok) {
+      resetBatchForm({
+        preserveSiteSelection: true,
+        keepResponseMessage: true
+      });
       await refreshSearchData();
+    } else {
+      if (keepOnlyFailedBatchRows(submittedDevices, data.failedRows)) {
+        validateBatchRows();
+      }
+      if (getBatchSuccessCount(data) > 0) {
+        await refreshSearchData();
+      }
     }
   } catch (error) {
     setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, error instanceof Error ? error.message : "Unexpected request error");
