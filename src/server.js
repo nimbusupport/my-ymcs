@@ -84,7 +84,9 @@ function parseUserSiteScopes(rawValue) {
     .filter(Boolean);
 
   for (const entry of rawEntries) {
-    const [emailPart, siteIdPart, siteNamePart] = entry.split("|").map((part) => String(part || "").trim());
+    const [emailPart, siteIdPart, siteNamePart, serverIdPart] = entry
+      .split("|")
+      .map((part) => String(part || "").trim());
     const email = emailPart.toLowerCase();
 
     if (!email || !siteIdPart || !siteNamePart) {
@@ -95,7 +97,8 @@ function parseUserSiteScopes(rawValue) {
       siteId: siteIdPart,
       name: siteNamePart,
       locked: true,
-      hideSiteId: true
+      hideSiteId: true,
+      searchServerId: serverIdPart || ""
     });
   }
 
@@ -309,6 +312,22 @@ function getAvailableSearchServers(user) {
     id: server.id,
     label: server.label
   }));
+}
+
+function getSearchServerConfigById(serverId) {
+  const normalizedId = String(serverId || "").trim();
+
+  if (!normalizedId) {
+    return null;
+  }
+
+  return searchServerConfigs.find((server) => server.id === normalizedId) || null;
+}
+
+function getYmcsEnvForUser(user) {
+  const scopedServerId = String(user?.siteScope?.searchServerId || "").trim();
+  const scopedServer = getSearchServerConfigById(scopedServerId);
+  return scopedServer?.env || process.env;
 }
 
 function isPublicRequest(method, pathname) {
@@ -558,12 +577,26 @@ function getMainSiteContext(sites, user = null) {
     : null;
 
   if (scopedSite) {
+    const allowedSiteIds = new Set([scopedSite.siteId]);
+    let changed = true;
+
+    while (changed) {
+      changed = false;
+
+      for (const site of sites) {
+        if (site.parentId && allowedSiteIds.has(site.parentId) && !allowedSiteIds.has(site.siteId)) {
+          allowedSiteIds.add(site.siteId);
+          changed = true;
+        }
+      }
+    }
+
     return {
       mainSite: {
         ...scopedSite,
         name: user.siteScope.name
       },
-      allowedSiteIds: new Set([scopedSite.siteId])
+      allowedSiteIds
     };
   }
 
@@ -951,9 +984,10 @@ async function handleRequest(req, res) {
   if (req.method === "GET" && url.pathname === "/api/sites") {
     const query = url.searchParams.get("q") || "";
     const user = getAuthUser(req);
+    const userEnv = getYmcsEnvForUser(user);
 
     try {
-      const ymcsSites = await getYmcsSites();
+      const ymcsSites = await getYmcsSites(userEnv);
       const scopedSites = applyUserSiteScopeToSiteList(ymcsSites, user);
       const items = filterSites(scopedSites, query);
 
@@ -1008,9 +1042,10 @@ async function handleRequest(req, res) {
           name: "All Admin Servers"
         };
       } else {
+        const userEnv = getYmcsEnvForUser(user);
         const [sites, devices] = await Promise.all([
-          getYmcsSites(process.env),
-          getYmcsDevices(process.env)
+          getYmcsSites(userEnv),
+          getYmcsDevices(userEnv)
         ]);
         const { mainSite, allowedSiteIds } = getMainSiteContext(sites, user);
         const hydratedDevices = attachSiteContextToDevices(devices, sites);
@@ -1048,7 +1083,7 @@ async function handleRequest(req, res) {
     try {
       const user = getAuthUser(req);
       const body = applyUserSiteScopeToDevicePayload(await readJsonBody(req), user);
-      const result = await addDevice(body);
+      const result = await addDevice(body, getYmcsEnvForUser(user));
       cachedDevices = {
         expiresAt: 0,
         items: []
@@ -1068,7 +1103,7 @@ async function handleRequest(req, res) {
     try {
       const user = getAuthUser(req);
       const body = applyUserSiteScopeToBatchPayload(await readJsonBody(req), user);
-      const result = await addDevices(body);
+      const result = await addDevices(body, getYmcsEnvForUser(user));
       cachedDevices = {
         expiresAt: 0,
         items: []
