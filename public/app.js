@@ -844,6 +844,55 @@ function downloadTextFile(content, filename, mimeType) {
   URL.revokeObjectURL(url);
 }
 
+function hasUtf8Bom(bytes) {
+  return bytes.length >= 3 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf;
+}
+
+function hasUtf16LeBom(bytes) {
+  return bytes.length >= 2 && bytes[0] === 0xff && bytes[1] === 0xfe;
+}
+
+function hasUtf16BeBom(bytes) {
+  return bytes.length >= 2 && bytes[0] === 0xfe && bytes[1] === 0xff;
+}
+
+function decodeBytes(bytes, encoding, useFatal = false) {
+  return new TextDecoder(encoding, { fatal: useFatal }).decode(bytes);
+}
+
+function decodeCsvBytes(bytes) {
+  if (hasUtf8Bom(bytes)) {
+    return decodeBytes(bytes, "utf-8");
+  }
+
+  if (hasUtf16LeBom(bytes)) {
+    return decodeBytes(bytes, "utf-16le");
+  }
+
+  if (hasUtf16BeBom(bytes)) {
+    return decodeBytes(bytes, "utf-16be");
+  }
+
+  try {
+    return decodeBytes(bytes, "utf-8", true);
+  } catch (utf8Error) {
+    try {
+      return decodeBytes(bytes, "windows-1255");
+    } catch (windows1255Error) {
+      try {
+        return decodeBytes(bytes, "iso-8859-8");
+      } catch (iso88598Error) {
+        return decodeBytes(bytes, "utf-8");
+      }
+    }
+  }
+}
+
+async function readCsvFileText(file) {
+  const buffer = await file.arrayBuffer();
+  return decodeCsvBytes(new Uint8Array(buffer));
+}
+
 function normalizeCsvHeader(value) {
   return String(value || "").trim().toLowerCase().replace(/[\s_-]+/g, "");
 }
@@ -1549,7 +1598,7 @@ function buildContactsXml(items) {
 }
 
 async function loadContactsCsvFile(file) {
-  const text = await file.text();
+  const text = await readCsvFileText(file);
   const mapped = mapContactsCsvRows(text);
 
   if (mapped.contacts.length === 0) {
@@ -2331,7 +2380,7 @@ batchUploadInput.addEventListener("change", async (event) => {
   }
 
   try {
-    const text = await file.text();
+    const text = await readCsvFileText(file);
     const importedRows = mapCsvRows(text);
 
     if (importedRows.length === 0) {
