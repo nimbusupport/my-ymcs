@@ -5,6 +5,13 @@ import { readFile } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
 import { addDevice, addDevices, listDevices, listModels, listSites, normalizeMac } from "./lib/ymcsClient.js";
+import {
+  buildIpConfigLookupUrl,
+  buildIpstackLookupUrl,
+  isValidIpAddress,
+  mergeIpLookupPayloads,
+  summarizeIpLookupPayload
+} from "./lib/ipLookup.js";
 import { phoneModels, searchPhoneModels } from "./config/deviceModels.js";
 
 dotenv.config();
@@ -47,6 +54,7 @@ const contentTypes = new Map([
 ]);
 const modelCacheTtlMs = Number(process.env.YMCS_MODELS_CACHE_MS || 5 * 60 * 1000);
 const siteCacheTtlMs = Number(process.env.YMCS_SITES_CACHE_MS || 5 * 60 * 1000);
+const ipLookupCacheTtlMs = Number(process.env.IPSTACK_CACHE_MS || 15 * 60 * 1000);
 const sessionSecret = String(
   process.env.SESSION_SECRET
   || process.env.YMCS_ACCESS_KEY_SECRET
@@ -65,6 +73,7 @@ let cachedDevices = {
   expiresAt: 0,
   items: []
 };
+const cachedIpLookups = new Map();
 
 function sendJson(res, statusCode, payload) {
   res.writeHead(statusCode, { "Content-Type": "application/json; charset=UTF-8" });
@@ -917,6 +926,85 @@ async function getYmcsDevices(env = process.env) {
   return items;
 }
 
+async function lookupIpDetails(ipAddress, env = process.env) {
+  let primaryPayload = {};
+  let primaryError = null;
+
+  try {
+    primaryPayload = await fetchIpLookupPayload(buildIpstackLookupUrl(ipAddress, env));
+  } catch (error) {
+    primaryError = error;
+  }
+
+  const primarySummary = summarizeIpLookupPayload(primaryPayload, ipAddress);
+  const shouldUseFallback = Boolean(
+    primaryError
+    || !primarySummary.isp
+    || !primarySummary.organization
+    || !primarySummary.hostname
+  );
+
+  if (!shouldUseFallback) {
+    return primaryPayload;
+  }
+
+  try {
+    const fallbackPayload = await fetchIpLookupPayload(buildIpConfigLookupUrl(ipAddress, env));
+    return mergeIpLookupPayloads(primaryPayload, fallbackPayload);
+  } catch (fallbackError) {
+    if (!primaryError) {
+      return primaryPayload;
+    }
+
+    const primaryMessage = primaryError instanceof Error ? primaryError.message : "Primary IP lookup failed.";
+    const fallbackMessage = fallbackError instanceof Error ? fallbackError.message : "Fallback IP lookup failed.";
+    throw new Error(`${primaryMessage} Fallback provider: ${fallbackMessage}`);
+  }
+}
+
+async function fetchIpLookupPayload(lookupUrl) {
+  const cachedEntry = cachedIpLookups.get(lookupUrl);
+
+  if (cachedEntry && cachedEntry.expiresAt > Date.now()) {
+    return cachedEntry.payload;
+  }
+
+  const response = await fetch(lookupUrl, {
+    headers: {
+      Accept: "application/json"
+    }
+  });
+  const responseText = await response.text();
+  let payload = {};
+
+  if (responseText.trim()) {
+    try {
+      payload = JSON.parse(responseText);
+    } catch {
+      throw new Error("IP lookup returned an invalid response.");
+    }
+  }
+
+  if (!response.ok) {
+    throw new Error(
+      payload?.error?.info
+      || payload?.error?.type
+      || `IP lookup failed with status ${response.status}.`
+    );
+  }
+
+  if (payload?.success === false || payload?.error) {
+    throw new Error(payload?.error?.info || payload?.error?.type || "IP lookup failed.");
+  }
+
+  cachedIpLookups.set(lookupUrl, {
+    expiresAt: Date.now() + ipLookupCacheTtlMs,
+    payload
+  });
+
+  return payload;
+}
+
 async function readJsonBody(req) {
   return new Promise((resolve, reject) => {
     let raw = "";
@@ -1178,6 +1266,40 @@ async function handleRequest(req, res) {
         scope: user?.siteScope || (isAdminSearch ? { name: "All Admin Servers" } : null),
         searchedServers: isAdminSearch ? getAvailableSearchServers(user) : [],
         fallbackReason: error instanceof Error ? error.message : "YMCS device lookup failed."
+      });
+    }
+    return;
+  }
+
+  if (req.method === "GET" && url.pathname === "/api/ip-lookup") {
+    const ipAddress = String(url.searchParams.get("ip") || "").trim();
+
+    if (!ipAddress) {
+      sendJson(res, 400, {
+        ok: false,
+        message: "IP address is required."
+      });
+      return;
+    }
+
+    if (!isValidIpAddress(ipAddress)) {
+      sendJson(res, 400, {
+        ok: false,
+        message: "Please provide a valid IPv4 or IPv6 address."
+      });
+      return;
+    }
+
+    try {
+      const payload = await lookupIpDetails(ipAddress);
+      sendJson(res, 200, {
+        ok: true,
+        ...summarizeIpLookupPayload(payload, ipAddress)
+      });
+    } catch (error) {
+      sendJson(res, 502, {
+        ok: false,
+        message: error instanceof Error ? error.message : "IP lookup failed."
       });
     }
     return;

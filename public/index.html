@@ -648,6 +648,23 @@
       </section>
     </div>
 
+    <div id="ip-lookup-modal" class="modal-backdrop hidden" aria-hidden="true">
+      <section class="modal-card ip-lookup-modal-card" role="dialog" aria-modal="true" aria-labelledby="ip-lookup-modal-title" aria-describedby="ip-lookup-modal-message">
+        <div class="modal-accent" aria-hidden="true"></div>
+        <div class="modal-body">
+          <div class="modal-eyebrow">IP Lookup</div>
+          <h2 id="ip-lookup-modal-title" class="modal-title">IP details</h2>
+          <p id="ip-lookup-modal-message" class="modal-message">
+            Open an IP result to see ISP, location, and all available network parameters.
+          </p>
+          <div id="ip-lookup-modal-content" class="ip-lookup-content"></div>
+          <div class="modal-actions">
+            <button id="ip-lookup-modal-close" class="secondary-button" type="button">Close</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
     <script type="module" src="/app.js"></script>
   </body>
 </html>

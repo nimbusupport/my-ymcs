@@ -18,6 +18,11 @@ const confirmModalTitle = document.querySelector("#confirm-modal-title");
 const confirmModalMessage = document.querySelector("#confirm-modal-message");
 const confirmModalConfirmButton = document.querySelector("#confirm-modal-confirm");
 const confirmModalCancelButton = document.querySelector("#confirm-modal-cancel");
+const ipLookupModal = document.querySelector("#ip-lookup-modal");
+const ipLookupModalTitle = document.querySelector("#ip-lookup-modal-title");
+const ipLookupModalMessage = document.querySelector("#ip-lookup-modal-message");
+const ipLookupModalContent = document.querySelector("#ip-lookup-modal-content");
+const ipLookupModalCloseButton = document.querySelector("#ip-lookup-modal-close");
 
 const authLoading = document.querySelector("#auth-loading");
 const loginShell = document.querySelector("#login-shell");
@@ -147,11 +152,20 @@ let configurationToolInitialized = false;
 let configurationDssExpanded = false;
 let confirmModalResolver = null;
 let confirmModalPreviousFocus = null;
+let ipLookupModalPreviousFocus = null;
+let ipLookupRequestSequence = 0;
+const ipLookupCache = new Map();
 
 function setCounterText(element, value) {
   if (element) {
     element.textContent = String(value);
   }
+}
+
+function syncModalOpenState() {
+  const confirmOpen = Boolean(confirmModal && !confirmModal.classList.contains("hidden"));
+  const ipLookupOpen = Boolean(ipLookupModal && !ipLookupModal.classList.contains("hidden"));
+  document.body.classList.toggle("modal-open", confirmOpen || ipLookupOpen);
 }
 
 function closeConfirmModal(confirmed) {
@@ -163,7 +177,7 @@ function closeConfirmModal(confirmed) {
   confirmModalResolver = null;
   confirmModal.classList.add("hidden");
   confirmModal.setAttribute("aria-hidden", "true");
-  document.body.classList.remove("modal-open");
+  syncModalOpenState();
 
   const previousFocus = confirmModalPreviousFocus;
   confirmModalPreviousFocus = null;
@@ -195,7 +209,7 @@ function showConfirmModal({
   confirmModalCancelButton.textContent = cancelLabel;
   confirmModal.classList.remove("hidden");
   confirmModal.setAttribute("aria-hidden", "false");
-  document.body.classList.add("modal-open");
+  syncModalOpenState();
 
   return new Promise((resolve) => {
     confirmModalResolver = resolve;
@@ -203,6 +217,237 @@ function showConfirmModal({
       confirmModalConfirmButton.focus();
     });
   });
+}
+
+function closeIpLookupModal() {
+  if (!ipLookupModal || ipLookupModal.classList.contains("hidden")) {
+    return;
+  }
+
+  ipLookupModal.classList.add("hidden");
+  ipLookupModal.setAttribute("aria-hidden", "true");
+  syncModalOpenState();
+
+  const previousFocus = ipLookupModalPreviousFocus;
+  ipLookupModalPreviousFocus = null;
+  if (previousFocus instanceof HTMLElement) {
+    previousFocus.focus();
+  }
+}
+
+function formatIpLookupValue(value) {
+  const normalized = String(value || "").trim();
+  return normalized || "-";
+}
+
+function decodeUnicodeCodePoints(value) {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) {
+    return "";
+  }
+
+  const matches = Array.from(normalized.matchAll(/U\+([0-9A-F]{2,6})/gi));
+  if (matches.length === 0) {
+    return "";
+  }
+
+  try {
+    return matches
+      .map((match) => String.fromCodePoint(Number.parseInt(match[1], 16)))
+      .join("");
+  } catch {
+    return "";
+  }
+}
+
+function isHttpUrl(value) {
+  const normalized = String(value || "").trim();
+
+  if (!normalized) {
+    return false;
+  }
+
+  try {
+    const url = new URL(normalized);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function renderIpLookupFieldValue(field) {
+  const path = String(field?.path || "").trim();
+  const label = String(field?.label || "").trim();
+  const value = formatIpLookupValue(field?.value);
+  const countryName = currentIpLookupCountryName || "Country";
+
+  if (value === "-") {
+    return escapeHtml(value);
+  }
+
+  if (path === "location.country_flag_emoji_unicode") {
+    const flagIcon = decodeUnicodeCodePoints(value);
+    if (flagIcon) {
+      return `
+        <span class="ip-lookup-flag-chip" title="${escapeHtml(value)}" aria-label="${escapeHtml(`${countryName} flag`)}">
+          <span class="ip-lookup-flag-emoji" aria-hidden="true">${flagIcon}</span>
+        </span>
+      `;
+    }
+  }
+
+  if (path === "location.country_flag" && isHttpUrl(value)) {
+    return `
+      <span class="ip-lookup-flag-chip">
+        <img
+          class="ip-lookup-flag-image"
+          src="${escapeHtml(value)}"
+          alt="${escapeHtml(`${countryName} flag`)}"
+          loading="lazy"
+          referrerpolicy="no-referrer"
+        >
+      </span>
+    `;
+  }
+
+  if (label === "Location / Country Flag Emoji" && value.length <= 8) {
+    return `
+      <span class="ip-lookup-flag-chip" aria-label="${escapeHtml(`${countryName} flag`)}">
+        <span class="ip-lookup-flag-emoji" aria-hidden="true">${escapeHtml(value)}</span>
+      </span>
+    `;
+  }
+
+  return escapeHtml(value);
+}
+
+let currentIpLookupCountryName = "";
+
+function renderIpLookupModalState({ title, message, summaryItems = [], fields = [] }) {
+  if (!ipLookupModalTitle || !ipLookupModalMessage || !ipLookupModalContent) {
+    return;
+  }
+
+  ipLookupModalTitle.textContent = title;
+  ipLookupModalMessage.textContent = message;
+  const currentCountryName = fields.find((field) => field?.path === "country_name")?.value
+    || fields.find((field) => field?.path === "country")?.value
+    || summaryItems.find((item) => item?.label === "Country")?.value
+    || "";
+  currentIpLookupCountryName = String(currentCountryName || "").trim();
+
+  const summaryMarkup = summaryItems.length > 0
+    ? `
+      <section class="ip-lookup-summary-grid">
+        ${summaryItems.map((item) => `
+          <article class="ip-lookup-summary-card">
+            <span class="ip-lookup-summary-label">${escapeHtml(item.label)}</span>
+            <strong class="ip-lookup-summary-value">${escapeHtml(formatIpLookupValue(item.value))}</strong>
+          </article>
+        `).join("")}
+      </section>
+    `
+    : "";
+
+  const fieldsMarkup = fields.length > 0
+    ? `
+      <section class="ip-lookup-fields-grid">
+        ${fields.map((field) => `
+          <article class="ip-lookup-field-card">
+            <span class="ip-lookup-field-label">${escapeHtml(field.label || field.path || "Field")}</span>
+            <strong class="ip-lookup-field-value">${renderIpLookupFieldValue(field)}</strong>
+          </article>
+        `).join("")}
+      </section>
+    `
+    : `<div class="ip-lookup-empty">No IP metadata is available for this address.</div>`;
+
+  ipLookupModalContent.innerHTML = `${summaryMarkup}${fieldsMarkup}`;
+}
+
+function openIpLookupModal(ipAddress, triggerElement = null) {
+  if (!ipLookupModal || !ipLookupModalTitle || !ipLookupModalMessage || !ipLookupModalContent) {
+    return;
+  }
+
+  const normalizedIp = String(ipAddress || "").trim();
+  if (!normalizedIp) {
+    return;
+  }
+
+  ipLookupModalPreviousFocus = triggerElement instanceof HTMLElement
+    ? triggerElement
+    : document.activeElement instanceof HTMLElement
+      ? document.activeElement
+      : null;
+
+  ipLookupModal.classList.remove("hidden");
+  ipLookupModal.setAttribute("aria-hidden", "false");
+  syncModalOpenState();
+  renderIpLookupModalState({
+    title: normalizedIp,
+    message: "Checking ISP, location, and network details for this IP address.",
+    fields: [{
+      label: "Status",
+      value: "Loading..."
+    }]
+  });
+  window.requestAnimationFrame(() => {
+    ipLookupModalCloseButton?.focus();
+  });
+
+  if (ipLookupCache.has(normalizedIp)) {
+    const cached = ipLookupCache.get(normalizedIp);
+    renderIpLookupModalState(cached);
+    return;
+  }
+
+  const requestId = ++ipLookupRequestSequence;
+  apiFetch(`/api/ip-lookup?ip=${encodeURIComponent(normalizedIp)}`)
+    .then(async (response) => {
+      const data = await response.json();
+
+      if (!response.ok || data?.ok === false) {
+        throw new Error(data?.message || "IP lookup failed.");
+      }
+
+      const summaryItems = [
+        { label: "ISP", value: data.isp },
+        { label: "Organization", value: data.organization },
+        { label: "Carrier", value: data.carrier },
+        { label: "Connection Type", value: data.connectionType },
+        { label: "Hostname", value: data.hostname },
+        { label: "Country", value: data.countryName },
+        { label: "Region", value: data.regionName },
+        { label: "City", value: data.city }
+      ].filter((item) => String(item.value || "").trim());
+
+      const viewModel = {
+        title: data.ip || normalizedIp,
+        message: data.isp
+          ? `ISP detected: ${data.isp}`
+          : "Lookup completed. Some ISP fields were not returned by the provider.",
+        summaryItems,
+        fields: Array.isArray(data.fields) ? data.fields : []
+      };
+
+      ipLookupCache.set(normalizedIp, viewModel);
+      if (requestId === ipLookupRequestSequence && ipLookupModal && !ipLookupModal.classList.contains("hidden")) {
+        renderIpLookupModalState(viewModel);
+      }
+    })
+    .catch((error) => {
+      if (requestId !== ipLookupRequestSequence || !ipLookupModal || ipLookupModal.classList.contains("hidden")) {
+        return;
+      }
+
+      renderIpLookupModalState({
+        title: normalizedIp,
+        message: error instanceof Error ? error.message : "IP lookup failed.",
+        fields: []
+      });
+    });
 }
 
 function resetSearchCounters() {
@@ -1634,9 +1879,29 @@ function renderSearchResults(items) {
     row.className = "search-row";
     const searchServerLabel = item.searchServerLabel || "-";
     const searchServerPortalUrl = getSearchServerPortalUrl(searchServerLabel);
+    const ipValues = [item.wanIp, item.lanIp].filter(Boolean);
+    const primaryIpAddress = ipValues[0] || "";
+    const ipDisplayValue = ipValues.join(" / ") || "-";
     const searchServerMarkup = searchServerPortalUrl
       ? `<a class="search-cell-link" href="${searchServerPortalUrl}" target="_blank" rel="noopener noreferrer">${escapeHtml(searchServerLabel)}</a>`
       : escapeHtml(searchServerLabel);
+    const ipInfoButtonMarkup = primaryIpAddress
+      ? `
+        <button
+          class="search-ip-info-button"
+          type="button"
+          data-ip-lookup-trigger
+          data-ip-address="${escapeHtml(primaryIpAddress)}"
+          aria-label="Show IP details for ${escapeHtml(primaryIpAddress)}"
+          title="Show IP details for ${escapeHtml(primaryIpAddress)}"
+        >
+          <svg viewBox="0 0 16 16" aria-hidden="true" focusable="false">
+            <circle cx="8" cy="8" r="6.5" fill="none" stroke="currentColor" stroke-width="1.4"></circle>
+            <path fill="currentColor" d="M8 6.1a.9.9 0 1 0 0-1.8.9.9 0 0 0 0 1.8Zm1 1.6H7.9a.45.45 0 0 0 0 .9h.25v2.7H7.8a.45.45 0 0 0 0 .9H9.1a.45.45 0 0 0 0-.9h-.05V8.15A.45.45 0 0 0 9 7.7Z"></path>
+          </svg>
+        </button>
+      `
+      : "";
     row.innerHTML = `
       <span class="search-cell search-cell-name">
         <small class="search-cell-label">Name/MAC</small>
@@ -1661,7 +1926,10 @@ function renderSearchResults(items) {
       </span>
       <span class="search-cell">
         <small class="search-cell-label">IP</small>
-        <span class="search-cell-value">${escapeHtml([item.wanIp, item.lanIp].filter(Boolean).join(" / ") || "-")}</span>
+        <span class="search-cell-value search-ip-value">
+          <span>${escapeHtml(ipDisplayValue)}</span>
+          ${ipInfoButtonMarkup}
+        </span>
       </span>
       <span class="search-cell">
         <small class="search-cell-label">Site</small>
@@ -2006,7 +2274,35 @@ confirmModal?.addEventListener("click", (event) => {
   }
 });
 
+ipLookupModalCloseButton?.addEventListener("click", () => {
+  closeIpLookupModal();
+});
+
+ipLookupModal?.addEventListener("click", (event) => {
+  if (event.target === ipLookupModal) {
+    closeIpLookupModal();
+  }
+});
+
+searchResults?.addEventListener("click", (event) => {
+  const trigger = event.target instanceof Element
+    ? event.target.closest("[data-ip-lookup-trigger]")
+    : null;
+
+  if (!trigger) {
+    return;
+  }
+
+  openIpLookupModal(trigger.dataset.ipAddress || "", trigger);
+});
+
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && ipLookupModal && !ipLookupModal.classList.contains("hidden")) {
+    event.preventDefault();
+    closeIpLookupModal();
+    return;
+  }
+
   if (event.key === "Escape" && confirmModalResolver && confirmModal && !confirmModal.classList.contains("hidden")) {
     event.preventDefault();
     closeConfirmModal(false);

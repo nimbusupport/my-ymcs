@@ -755,6 +755,44 @@ button {
   word-break: break-word;
 }
 
+.search-ip-value {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.search-ip-info-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid rgba(15, 111, 131, 0.18);
+  border-radius: 999px;
+  background: rgba(15, 111, 131, 0.08);
+  color: #0f6f83;
+  cursor: pointer;
+  transition: transform 140ms ease, background 140ms ease, border-color 140ms ease;
+}
+
+.search-ip-info-button:hover {
+  background: rgba(15, 111, 131, 0.14);
+  border-color: rgba(15, 111, 131, 0.28);
+  transform: translateY(-1px);
+}
+
+.search-ip-info-button:focus-visible {
+  outline: 2px solid rgba(15, 111, 131, 0.38);
+  outline-offset: 2px;
+}
+
+.search-ip-info-button svg {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+}
+
 .search-cell-link {
   color: #0f6f83;
   font-weight: 600;
@@ -784,6 +822,90 @@ button {
 .search-status-value.status-inactive::before {
   content: none;
   display: none;
+}
+
+.ip-lookup-modal-card {
+  width: min(860px, 100%);
+}
+
+.ip-lookup-content {
+  display: grid;
+  gap: 18px;
+  max-height: min(62vh, 640px);
+  overflow: auto;
+  padding-right: 4px;
+}
+
+.ip-lookup-summary-grid,
+.ip-lookup-fields-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.ip-lookup-summary-grid {
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+}
+
+.ip-lookup-fields-grid {
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+}
+
+.ip-lookup-summary-card,
+.ip-lookup-field-card {
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid rgba(220, 230, 237, 0.9);
+  background: rgba(255, 255, 255, 0.84);
+}
+
+.ip-lookup-summary-label,
+.ip-lookup-field-label {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #7f8d9d;
+}
+
+.ip-lookup-summary-value,
+.ip-lookup-field-value {
+  color: #1d3345;
+  line-height: 1.45;
+  word-break: break-word;
+}
+
+.ip-lookup-flag-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 36px;
+  min-width: 52px;
+  padding: 6px 10px;
+  border-radius: 12px;
+  background: rgba(242, 246, 249, 0.95);
+  border: 1px solid rgba(203, 214, 223, 0.9);
+}
+
+.ip-lookup-flag-emoji {
+  font-size: 28px;
+  line-height: 1;
+}
+
+.ip-lookup-flag-image {
+  display: block;
+  width: 34px;
+  height: auto;
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(19, 36, 53, 0.12);
+}
+
+.ip-lookup-empty {
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.76);
+  border: 1px dashed rgba(140, 153, 168, 0.4);
+  color: #526678;
 }
 
 .status-indicator {
@@ -2087,6 +2209,15 @@ input[readonly] {
 
   .search-total-row strong {
     font-size: 32px;
+  }
+
+  .search-ip-value {
+    align-items: flex-start;
+  }
+
+  .ip-lookup-fields-grid,
+  .ip-lookup-summary-grid {
+    grid-template-columns: 1fr;
   }
 }
 
