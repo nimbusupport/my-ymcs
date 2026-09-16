@@ -547,6 +547,25 @@
             The device will report using the RPS service and be simultaneously added to the RPS device list
           </div>
 
+          <section class="insight-card drawer-tool-card">
+            <div class="drawer-tool-head">
+              <span class="eyebrow">Site Tool</span>
+              <strong>Create Site First</strong>
+            </div>
+            <label class="field">
+              <span>Create New Site Name</span>
+              <input id="site-create-name" name="siteCreateName" type="text" placeholder="Optional new child site name" maxlength="128">
+              <small id="device-site-create-note" class="field-note">Optional. If filled, the app will create this child site under Nimbus and then add the device there.</small>
+            </label>
+            <div class="drawer-tool-actions">
+              <button id="site-create-button" class="primary-button" type="button">Create</button>
+            </div>
+            <section id="site-create-response-panel" class="response hidden" aria-live="polite">
+              <div id="site-create-response-badge" class="response-badge">Pending</div>
+              <p id="site-create-response-message" class="response-message"></p>
+            </section>
+          </section>
+
           <form id="device-form" class="form" novalidate>
             <label class="field">
               <span>Device Name</span>
@@ -593,7 +612,7 @@
             </div>
 
             <details class="advanced">
-              <summary>Advanced Settings</summary>
+              <summary>Choose Site</summary>
               <div class="field field-tight">
                 <span>Site</span>
                 <div class="combo" id="site-combo">
@@ -827,8 +846,8 @@
                 </label>
 
                 <div class="field">
-                  <span>Site</span>
-                  <div class="combo" id="sip-account-site-combo">
+                <span>Choose Site</span>
+                <div class="combo" id="sip-account-site-combo">
                     <div class="combo-shell">
                       <input id="sip-account-site-input" name="sipAccountSiteInput" type="text" placeholder="Select a site" autocomplete="off" aria-expanded="false">
                       <input id="selected-sip-account-site-id" name="selectedSipAccountSiteId" type="hidden">
@@ -836,8 +855,8 @@
                     </div>
                     <div id="sip-account-site-menu" class="combo-menu hidden" role="listbox"></div>
                   </div>
-                  <small id="sip-account-site-note" class="field-note">Optional. You can assign this account to a YMCS site.</small>
-                </div>
+                <small id="sip-account-site-note" class="field-note">Optional. Choose the YMCS site for this SIP account.</small>
+              </div>
 
                 <div class="field">
                   <span><em>*</em> Server Address 1</span>

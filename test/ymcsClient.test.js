@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildAddDeviceRequest,
+  buildAddSiteRequest,
   buildAddSipAccountRequest,
   buildBatchAddDevicesRequest,
   buildBindAccountsRequest,
@@ -162,6 +163,31 @@ test("buildListSitesRequest targets YMCS site list endpoint", () => {
   assert.equal(request.headers.nonce, "nonce-123");
   assert.equal(request.headers.timestamp, "1730000000000");
   assert.equal(request.headers.Accept, "application/json");
+  assert.equal(request.headers["Content-Type"], "application/json;charset=UTF-8");
+});
+
+test("buildAddSiteRequest builds YMCS create site payload", () => {
+  const request = buildAddSiteRequest(
+    {
+      name: "Branch 1002",
+      parentId: "edihwhhe",
+      description: "Auto-created during device add"
+    },
+    sampleEnv,
+    {
+      accessToken: "token-789",
+      timestamp: 1730000000000,
+      nonce: "nonce-123"
+    }
+  );
+
+  assert.equal(request.url, "https://eu-api.ymcs.yealink.com/v2/dm/sites");
+  assert.deepEqual(request.body, {
+    name: "Branch 1002",
+    parentId: "edihwhhe",
+    Description: "Auto-created during device add"
+  });
+  assert.equal(request.headers.Authorization, "Bearer token-789");
   assert.equal(request.headers["Content-Type"], "application/json;charset=UTF-8");
 });
 

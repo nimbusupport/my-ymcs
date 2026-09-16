@@ -1247,6 +1247,27 @@ button {
   color: #667687;
 }
 
+.drawer-tool-card {
+  display: grid;
+  gap: 14px;
+  background: linear-gradient(180deg, rgba(242, 252, 248, 0.94) 0%, rgba(251, 253, 255, 0.97) 100%);
+  border: 1px solid rgba(32, 195, 161, 0.14);
+}
+
+.drawer-tool-head {
+  display: grid;
+  gap: 6px;
+}
+
+.drawer-tool-head strong {
+  margin-top: 0;
+}
+
+.drawer-tool-actions {
+  display: flex;
+  justify-content: flex-start;
+}
+
 .search-summary-card {
   display: grid;
   gap: 16px;

@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import {
   addDevice,
   addDevices,
+  addSite,
   addSipAccount,
   bindAccountsToDevice,
   listAccounts,
@@ -794,6 +795,13 @@ function applyUserSiteScopeToDevicePayload(body, user) {
     return body;
   }
 
+  if (String(body?.createSiteName ?? "").trim()) {
+    return {
+      ...body,
+      siteId: String(body?.siteId ?? "").trim()
+    };
+  }
+
   return {
     ...body,
     siteId: user.siteScope.siteId
@@ -929,6 +937,122 @@ async function addSipAccountsBatch(accounts, env) {
   return {
     ...summary,
     message: buildSipAccountBatchMessage(summary)
+  };
+}
+
+function getConfiguredDeviceSiteParent() {
+  return {
+    parentId: String(process.env.YMCS_DEVICE_SITE_PARENT_ID || "edihwhhe").trim(),
+    parentName: String(process.env.YMCS_DEVICE_SITE_PARENT_NAME || "Nimbus").trim(),
+    ancestorId: String(process.env.YMCS_MAIN_SITE_ID || "4llm4r7e").trim(),
+    ancestorName: String(process.env.YMCS_ENTERPRISE_NAME || "NIMBUSIP").trim()
+  };
+}
+
+function findDeviceSiteParent(sites, user) {
+  if (user?.siteScope) {
+    return sites.find((site) => site.siteId === user.siteScope.siteId) || {
+      siteId: user.siteScope.siteId,
+      name: user.siteScope.name,
+      parentId: "",
+      parentName: ""
+    };
+  }
+
+  const configured = getConfiguredDeviceSiteParent();
+  return sites.find((site) => site.siteId === configured.parentId)
+    || sites.find((site) => (
+      site.name === configured.parentName
+      && (site.parentId === configured.ancestorId || site.parentName === configured.ancestorName)
+    ))
+    || sites.find((site) => site.name === configured.parentName)
+    || getMainSiteContext(sites, user).mainSite
+    || null;
+}
+
+function findSiteByNameUnderParent(sites, name, parentId) {
+  const normalizedName = canonicalizeSearchText(name);
+  const normalizedParentId = String(parentId || "").trim();
+
+  if (!normalizedName || !normalizedParentId) {
+    return null;
+  }
+
+  return sites.find((site) => (
+    canonicalizeSearchText(site.name) === normalizedName
+    && String(site.parentId || "").trim() === normalizedParentId
+  )) || null;
+}
+
+async function createOrReuseDeviceSite(createSiteName, env, user) {
+  const sites = await getYmcsSites(env);
+  const parentSite = findDeviceSiteParent(sites, user);
+
+  if (!parentSite?.siteId) {
+    throw new Error("Unable to resolve the parent site for creating a new device site.");
+  }
+
+  const existingSite = findSiteByNameUnderParent(sites, createSiteName, parentSite.siteId);
+  if (existingSite) {
+    return {
+      site: existingSite,
+      message: `Using existing site "${existingSite.name}" under ${parentSite.name}.`,
+      reused: true
+    };
+  }
+
+  const createSiteResult = await addSite({
+    name: createSiteName,
+    parentId: parentSite.siteId
+  }, env);
+
+  if (!createSiteResult.ok) {
+    throw new Error(createSiteResult.message || "Unable to create the YMCS site for this device.");
+  }
+
+  cachedSites = {
+    expiresAt: 0,
+    items: []
+  };
+
+  const createdSite = {
+    siteId: String(createSiteResult?.payload?.id || "").trim(),
+    name: String(createSiteResult?.payload?.name || createSiteName).trim(),
+    parentId: String(createSiteResult?.payload?.parentId || parentSite.siteId).trim(),
+    parentName: parentSite.name,
+    description: ""
+  };
+
+  if (!createdSite.siteId) {
+    throw new Error("The site was created, but YMCS did not return a site ID.");
+  }
+
+  return {
+    site: createdSite,
+    message: `Created site "${createdSite.name}" under ${parentSite.name}.`,
+    reused: false
+  };
+}
+
+async function prepareDeviceSiteAssignment(body, env, user) {
+  const createSiteName = String(body?.createSiteName ?? "").trim();
+  if (!createSiteName) {
+    return {
+      body,
+      createdSite: null,
+      siteMessage: ""
+    };
+  }
+
+  const preparedSite = await createOrReuseDeviceSite(createSiteName, env, user);
+
+  return {
+    body: {
+      ...body,
+      siteId: preparedSite.site.siteId
+    },
+    createdSite: preparedSite.site,
+    siteMessage: preparedSite.message
   };
 }
 
@@ -1592,6 +1716,36 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === "POST" && url.pathname === "/api/sites") {
+    try {
+      const user = getAuthUser(req);
+      const body = await readJsonBody(req);
+      const name = String(body?.name ?? "").trim();
+
+      if (!name) {
+        sendJson(res, 400, {
+          ok: false,
+          message: "Site name is required."
+        });
+        return;
+      }
+
+      const result = await createOrReuseDeviceSite(name, getYmcsEnvForUser(user), user);
+      sendJson(res, 200, {
+        ok: true,
+        reused: result.reused,
+        site: result.site,
+        message: result.message
+      });
+    } catch (error) {
+      sendJson(res, 400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Site creation failed."
+      });
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/accounts") {
     const query = url.searchParams.get("q") || "";
     const user = getAuthUser(req);
@@ -1727,13 +1881,19 @@ async function handleRequest(req, res) {
   if (req.method === "POST" && url.pathname === "/api/devices") {
     try {
       const user = getAuthUser(req);
-      const body = applyUserSiteScopeToDevicePayload(await readJsonBody(req), user);
-      const result = await addDeviceWithOptionalSipBinding(body, getYmcsEnvForUser(user));
+      const scopedBody = applyUserSiteScopeToDevicePayload(await readJsonBody(req), user);
+      const env = getYmcsEnvForUser(user);
+      const prepared = await prepareDeviceSiteAssignment(scopedBody, env, user);
+      const result = await addDeviceWithOptionalSipBinding(prepared.body, env);
       cachedDevices = {
         expiresAt: 0,
         items: []
       };
-      sendJson(res, result.ok || result.deviceCreated ? 200 : result.status || 502, result);
+      sendJson(res, result.ok || result.deviceCreated ? 200 : result.status || 502, {
+        ...result,
+        createdSite: prepared.createdSite,
+        message: [prepared.siteMessage, result.message].filter(Boolean).join(" ")
+      });
     } catch (error) {
       sendJson(res, 400, {
         ok: false,

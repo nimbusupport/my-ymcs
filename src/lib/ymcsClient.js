@@ -5,6 +5,7 @@ const DEVICE_API_PATH = "v2/dm/devices";
 const BATCH_DEVICE_API_PATH = "v2/dm/addDevices";
 const MODELS_API_PATH = "v2/dm/models";
 const LIST_SITES_API_PATH = "v2/dm/listSites";
+const ADD_SITE_API_PATH = "v2/dm/sites";
 const LIST_DEVICES_API_PATH = "v2/dm/listDevices";
 const ADD_SIP_ACCOUNT_API_PATH = "v2/dm/sipAccounts";
 const LIST_ACCOUNTS_API_PATH = "v2/dm/listAccounts";
@@ -280,6 +281,47 @@ export function buildListSitesRequest(input = {}, env = process.env, options = {
     timestamp: options.timestamp,
     nonce: options.nonce
   });
+}
+
+function validateSiteInput(input = {}) {
+  const name = normalizeLimitedText(input.name, 128, "Site Name", { required: true });
+  const parentId = String(input.parentId ?? "").trim();
+  const description = normalizeLimitedText(input.description ?? input.Description, 1024, "Description");
+
+  if (!parentId) {
+    throw new Error("Parent Site ID is required.");
+  }
+
+  return {
+    name,
+    parentId,
+    description
+  };
+}
+
+export function buildAddSiteRequest(input = {}, env = process.env, options = {}) {
+  const site = validateSiteInput(input);
+  const body = {
+    name: site.name,
+    parentId: site.parentId
+  };
+
+  if (site.description) {
+    body.Description = site.description;
+  }
+
+  const request = buildAuthorizedRequest("POST", ADD_SITE_API_PATH, env, {
+    body,
+    accessToken: options.accessToken,
+    timestamp: options.timestamp,
+    nonce: options.nonce
+  });
+
+  return {
+    ...request,
+    site,
+    body
+  };
 }
 
 export function buildListDevicesRequest(input = {}, env = process.env, options = {}) {
@@ -659,6 +701,28 @@ export async function addDevices(input = {}, env = process.env) {
 export async function addSipAccount(input = {}, env = process.env) {
   const accessToken = await getAccessToken(env);
   const request = buildAddSipAccountRequest(input, env, { accessToken });
+  const response = await fetch(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: request.bodyJson
+  });
+
+  const rawText = await response.text();
+  const payload = parseYmcsPayload(rawText);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    message: extractYmcsMessage(payload),
+    payload,
+    requestBody: request.body
+  };
+}
+
+export async function addSite(input = {}, env = process.env) {
+  const accessToken = await getAccessToken(env);
+  const request = buildAddSiteRequest(input, env, { accessToken });
   const response = await fetch(request.url, {
     method: "POST",
     headers: request.headers,

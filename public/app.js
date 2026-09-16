@@ -56,6 +56,12 @@ const siteInput = document.querySelector("#site-input");
 const selectedSiteIdInput = document.querySelector("#selected-site-id");
 const siteMenu = document.querySelector("#site-menu");
 const siteToggle = document.querySelector("#site-toggle");
+const siteCreateNameInput = document.querySelector("#site-create-name");
+const siteCreateButton = document.querySelector("#site-create-button");
+const siteCreateResponsePanel = document.querySelector("#site-create-response-panel");
+const siteCreateResponseBadge = document.querySelector("#site-create-response-badge");
+const siteCreateResponseMessage = document.querySelector("#site-create-response-message");
+const deviceSiteCreateNote = document.querySelector("#device-site-create-note");
 const deviceAccountInput = document.querySelector("#device-account-input");
 const selectedDeviceAccountIdInput = document.querySelector("#selected-device-account-id");
 const deviceAccountMenu = document.querySelector("#device-account-menu");
@@ -1080,13 +1086,19 @@ function applyLockedSiteScopeToInputs() {
       deviceSiteNote.innerHTML = "Choose a YMCS site by name, or paste a raw site ID such as <code>u4encsac</code>.";
     }
 
+    if (deviceSiteCreateNote) {
+      deviceSiteCreateNote.textContent = "Optional. If filled, the app will create this child site under Nimbus and then add the device there.";
+    }
+
     if (batchSiteNote) {
       batchSiteNote.textContent = "Every imported or manual row in this batch will be added to the selected site.";
     }
 
     if (sipAccountSiteNote) {
-      sipAccountSiteNote.textContent = "Optional. You can assign this account to a YMCS site.";
+      sipAccountSiteNote.textContent = "Optional. Choose the YMCS site for this SIP account.";
     }
+  } else if (deviceSiteCreateNote) {
+    deviceSiteCreateNote.textContent = `Optional. If filled, the app will create this child site under ${lockedSite.name} and then add the device there.`;
   }
 }
 
@@ -1481,6 +1493,17 @@ function findSiteItemById(siteId) {
   return siteItems.find((item) => item.siteId === normalizedId) || null;
 }
 
+function applySiteSelection(input, hiddenInput, siteId = "") {
+  if (!input || !hiddenInput) {
+    return;
+  }
+
+  const normalizedId = String(siteId || "").trim();
+  const matched = findSiteItemById(normalizedId);
+  hiddenInput.value = normalizedId;
+  input.value = matched ? matched.name : normalizedId;
+}
+
 function normalizeSipAccountCount(value) {
   const numericValue = Number(value);
 
@@ -1672,10 +1695,7 @@ function setSipAccountBatchCount(count = 1) {
 }
 
 function setSipAccountSiteSelection(siteId = "") {
-  const normalizedId = String(siteId || "").trim();
-  const matched = findSiteItemById(normalizedId);
-  selectedSipAccountSiteIdInput.value = normalizedId;
-  sipAccountSiteInput.value = matched ? matched.name : normalizedId;
+  applySiteSelection(sipAccountSiteInput, selectedSipAccountSiteIdInput, siteId);
   updateSipAccountExtraInheritancePreview();
 }
 
@@ -1943,7 +1963,7 @@ function setBatchAutoModelSelection(selection = {}) {
 }
 
 function buildSuccessMessage(payload) {
-  if (payload?.message && payload?.bindResult) {
+  if (payload?.message) {
     return payload.message;
   }
 
@@ -2854,6 +2874,20 @@ async function apiFetch(input, init) {
   return response;
 }
 
+async function readJsonResponse(response) {
+  const rawText = await response.text();
+
+  if (!rawText) {
+    return {};
+  }
+
+  try {
+    return JSON.parse(rawText);
+  } catch {
+    throw new Error(rawText);
+  }
+}
+
 async function loadModels(query = "") {
   if (modelItems.length === 0) {
     const response = await apiFetch("/api/models");
@@ -2867,8 +2901,10 @@ async function loadModels(query = "") {
   renderModels();
 }
 
-async function loadSites(query = "") {
-  if (siteItems.length === 0) {
+async function loadSites(query = "", options = {}) {
+  const forceReload = options.forceReload === true;
+
+  if (forceReload || siteItems.length === 0) {
     const response = await apiFetch("/api/sites");
     const data = await response.json();
     siteItems = data.items || [];
@@ -3295,6 +3331,72 @@ accountsRefreshButton.addEventListener("click", async () => {
       false,
       error instanceof Error ? error.message : "Unable to refresh SIP accounts."
     );
+  }
+});
+
+siteCreateButton?.addEventListener("click", async () => {
+  const name = siteCreateNameInput?.value.trim() || "";
+
+  if (!name) {
+    setResponseState(
+      siteCreateResponsePanel,
+      siteCreateResponseBadge,
+      siteCreateResponseMessage,
+      false,
+      "Enter a site name before creating it."
+    );
+    return;
+  }
+
+  siteCreateButton.disabled = true;
+  siteCreateButton.textContent = "Creating...";
+
+  try {
+    const response = await apiFetch("/api/sites", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        name
+      })
+    });
+    const data = await readJsonResponse(response);
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || "Site creation failed. If the server was already running, restart it so the new /api/sites route is available.");
+    }
+
+    await loadSites("", { forceReload: true });
+
+    const createdSiteId = String(data?.site?.siteId || "").trim();
+    if (createdSiteId) {
+      applySiteSelection(siteInput, selectedSiteIdInput, createdSiteId);
+      setSipAccountSiteSelection(createdSiteId);
+    }
+
+    siteCreateNameInput.value = "";
+    resetResponseState(responsePanel, responseMessage);
+    setResponseState(
+      siteCreateResponsePanel,
+      siteCreateResponseBadge,
+      siteCreateResponseMessage,
+      true,
+      data.message || "Site created successfully."
+    );
+  } catch (error) {
+    setResponseState(
+      siteCreateResponsePanel,
+      siteCreateResponseBadge,
+      siteCreateResponseMessage,
+      false,
+      error instanceof Error
+        ? error.message
+        : "Site creation failed. If the server was already running, restart it so the new /api/sites route is available."
+    );
+  } finally {
+    siteCreateButton.disabled = false;
+    siteCreateButton.textContent = "Create";
   }
 });
 
