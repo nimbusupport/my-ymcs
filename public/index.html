@@ -70,6 +70,7 @@
             <button class="nav-link nav-link-active" type="button" data-view="device">Device</button>
             <button class="nav-link" type="button" data-view="multiple">Multiple Devices</button>
             <button class="nav-link" type="button" data-view="search">Search</button>
+            <button class="nav-link" type="button" data-view="accounts">SIP Accounts</button>
             <button class="nav-link" type="button" data-view="contacts">Contacts Generate</button>
             <button class="nav-link" type="button" data-view="configuration">Configuration</button>
           </nav>
@@ -297,6 +298,52 @@
                 </div>
               </div>
             </div>
+          </section>
+
+          <section id="accounts-workspace" class="workspace-panel hidden">
+            <div class="hero-card">
+              <div>
+                <div class="eyebrow">SIP Account Management</div>
+                <h2>Create SIP accounts and reuse them on devices.</h2>
+                <p>Add SIP accounts directly to YMCS, search the current account list, and reuse them while creating devices.</p>
+              </div>
+              <div class="hero-stats">
+                <div class="hero-stat">
+                  <span>SIP Accounts</span>
+                  <strong id="accounts-total-count">0</strong>
+                </div>
+              </div>
+            </div>
+
+            <div class="search-bar-card">
+              <div class="accounts-toolbar">
+                <div class="search-input-shell">
+                  <input id="accounts-search-input" class="search-input" type="text" placeholder="Username / Register Name / Server / Site" enterkeyhint="search">
+                  <button id="accounts-search-clear-button" class="search-input-clear hidden" type="button" aria-label="Clear SIP account search"></button>
+                </div>
+                <button id="accounts-refresh-button" class="secondary-button" type="button">Refresh</button>
+                <button id="accounts-add-button" class="primary-button" type="button">+ Add SIP Account</button>
+              </div>
+            </div>
+
+            <div class="table-card search-table-card">
+              <div class="accounts-table-head">
+                <span>Username</span>
+                <span>Register Name</span>
+                <span>Server</span>
+                <span>Type</span>
+                <span>Site</span>
+                <span>Created</span>
+              </div>
+              <div class="search-table-scroll">
+                <div id="accounts-results" class="accounts-results"></div>
+              </div>
+            </div>
+
+            <section id="accounts-response-panel" class="response hidden" aria-live="polite">
+              <div id="accounts-response-badge" class="response-badge">Pending</div>
+              <p id="accounts-response-message" class="response-message"></p>
+            </section>
           </section>
 
           <section id="contacts-workspace" class="workspace-panel hidden">
@@ -529,6 +576,22 @@
               <small class="field-note">The model list loads from YMCS without site info. You can also paste a raw YMCS modelId.</small>
             </div>
 
+            <div class="field">
+              <span>SIP Account</span>
+              <div class="device-account-row">
+                <div class="combo" id="device-account-combo">
+                  <div class="combo-shell">
+                    <input id="device-account-input" name="deviceAccountInput" type="text" placeholder="Choose an existing SIP account to bind" autocomplete="off" aria-expanded="false">
+                    <input id="selected-device-account-id" name="selectedDeviceAccountId" type="hidden">
+                    <button id="device-account-toggle" class="combo-toggle" type="button" aria-label="Toggle SIP account list"></button>
+                  </div>
+                  <div id="device-account-menu" class="combo-menu hidden" role="listbox"></div>
+                </div>
+                <button id="device-account-add-button" class="primary-button" type="button">SIP Account</button>
+              </div>
+              <small id="device-account-note" class="field-note">Optional. The selected SIP account will bind to line <code>1</code> after the device is created.</small>
+            </div>
+
             <details class="advanced">
               <summary>Advanced Settings</summary>
               <div class="field field-tight">
@@ -615,6 +678,20 @@
           </div>
         </section>
 
+        <section id="accounts-drawer" class="drawer-panel hidden">
+          <header class="drawer-header">
+            <h1>SIP Accounts</h1>
+          </header>
+          <div class="notice">
+            Create SIP accounts once, then bind them during single-device provisioning whenever needed.
+          </div>
+          <div class="insight-card">
+            <span class="eyebrow">Binding Flow</span>
+            <strong>Device save can bind line 1</strong>
+            <p>When you pick a SIP account on the Device page, the account is bound after YMCS creates the device.</p>
+          </div>
+        </section>
+
         <section id="contacts-drawer" class="drawer-panel hidden">
           <header class="drawer-header">
             <h1>Contacts Generate</h1>
@@ -690,6 +767,97 @@
           <div class="modal-actions">
             <button id="ip-lookup-modal-close" class="secondary-button" type="button">Close</button>
           </div>
+        </div>
+      </section>
+    </div>
+
+    <div id="sip-account-modal" class="modal-backdrop hidden" aria-hidden="true">
+      <section class="modal-card sip-account-modal-card" role="dialog" aria-modal="true" aria-labelledby="sip-account-modal-title" aria-describedby="sip-account-modal-message">
+        <div class="modal-accent" aria-hidden="true"></div>
+        <div class="modal-body">
+          <div class="modal-eyebrow">SIP Account</div>
+          <h2 id="sip-account-modal-title" class="modal-title">Add SIP Account</h2>
+          <p id="sip-account-modal-message" class="modal-message">
+            Create a SIP account in YMCS, then optionally bind it to the device you are currently adding.
+          </p>
+
+          <form id="sip-account-form" class="form sip-account-form" novalidate>
+            <div class="sip-account-grid">
+              <label class="field">
+                <span><em>*</em> Register Name</span>
+                <input id="sip-register-name" name="registerName" type="text" maxlength="128" placeholder="Please enter register name">
+              </label>
+
+              <label class="field">
+                <span><em>*</em> Username</span>
+                <input id="sip-username" name="username" type="text" maxlength="128" placeholder="Please enter username">
+              </label>
+
+              <label class="field">
+                <span><em>*</em> Password</span>
+                <input id="sip-password" name="password" type="text" maxlength="128" placeholder="Please enter password">
+              </label>
+
+              <label class="field">
+                <span>Label</span>
+                <input id="sip-label" name="label" type="text" maxlength="128" placeholder="Optional label">
+              </label>
+
+              <label class="field">
+                <span>Display Name</span>
+                <input id="sip-display-name" name="displayName" type="text" maxlength="128" placeholder="Optional display name">
+              </label>
+
+              <div class="field">
+                <span>Site</span>
+                <div class="combo" id="sip-account-site-combo">
+                  <div class="combo-shell">
+                    <input id="sip-account-site-input" name="sipAccountSiteInput" type="text" placeholder="Select a site" autocomplete="off" aria-expanded="false">
+                    <input id="selected-sip-account-site-id" name="selectedSipAccountSiteId" type="hidden">
+                    <button id="sip-account-site-toggle" class="combo-toggle" type="button" aria-label="Toggle SIP account site list"></button>
+                  </div>
+                  <div id="sip-account-site-menu" class="combo-menu hidden" role="listbox"></div>
+                </div>
+                <small id="sip-account-site-note" class="field-note">Optional. You can assign this account to a YMCS site.</small>
+              </div>
+
+              <div class="field">
+                <span><em>*</em> Server Address 1</span>
+                <div class="sip-server-row">
+                  <input id="sip-server1-host" name="sipServer1Host" type="text" maxlength="256" placeholder="Please enter server address">
+                  <input id="sip-server1-port" name="sipServer1Port" type="number" min="0" max="65535" value="5060" placeholder="5060">
+                </div>
+              </div>
+
+              <div class="field">
+                <span>Server Address 2</span>
+                <div class="sip-server-row">
+                  <input id="sip-server2-host" name="sipServer2Host" type="text" maxlength="256" placeholder="Optional backup server address">
+                  <input id="sip-server2-port" name="sipServer2Port" type="number" min="0" max="65535" value="5060" placeholder="5060">
+                </div>
+              </div>
+            </div>
+
+            <label class="field">
+              <span>Description</span>
+              <textarea id="sip-remark" name="remark" rows="4" maxlength="512" placeholder="Optional description"></textarea>
+            </label>
+
+            <label id="sip-bind-option" class="modal-checkbox hidden">
+              <input id="sip-bind-after-save" name="bindAfterSave" type="checkbox">
+              <span>Bind this SIP account to the current device after device save.</span>
+            </label>
+
+            <section id="sip-account-response-panel" class="response hidden" aria-live="polite">
+              <div id="sip-account-response-badge" class="response-badge">Pending</div>
+              <p id="sip-account-response-message" class="response-message"></p>
+            </section>
+
+            <div class="modal-actions">
+              <button id="sip-account-save-button" class="primary-button" type="submit">Save SIP Account</button>
+              <button id="sip-account-cancel-button" class="secondary-button" type="button">Cancel</button>
+            </div>
+          </form>
         </div>
       </section>
     </div>

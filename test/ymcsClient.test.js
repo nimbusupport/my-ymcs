@@ -2,13 +2,17 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   buildAddDeviceRequest,
+  buildAddSipAccountRequest,
   buildBatchAddDevicesRequest,
+  buildBindAccountsRequest,
+  buildListAccountsRequest,
   buildListDevicesRequest,
   buildListModelsRequest,
   buildListSitesRequest,
   buildTokenRequest,
   extractYmcsMessage,
   normalizeMac,
+  validateSipAccountInput,
   validateDeviceInput
 } from "../src/lib/ymcsClient.js";
 
@@ -185,6 +189,117 @@ test("buildListDevicesRequest targets YMCS device list endpoint", () => {
   });
   assert.equal(request.headers.Authorization, "Bearer token-789");
   assert.equal(request.headers["Content-Type"], "application/json;charset=UTF-8");
+});
+
+test("validateSipAccountInput requires register name, username, password, and server 1 host", () => {
+  assert.throws(
+    () => validateSipAccountInput({ username: "1000", password: "secret" }),
+    /Register Name/
+  );
+  assert.throws(
+    () => validateSipAccountInput({ registerName: "1000", password: "secret", sipServer1: { host: "pbx.local" } }),
+    /Username/
+  );
+  assert.throws(
+    () => validateSipAccountInput({ registerName: "1000", username: "1000", sipServer1: { host: "pbx.local" } }),
+    /Password/
+  );
+});
+
+test("buildAddSipAccountRequest builds SIP account create payload", () => {
+  const request = buildAddSipAccountRequest(
+    {
+      registerName: "1000",
+      username: "1000",
+      password: "secret",
+      label: "Front Desk",
+      displayName: "Front Desk",
+      remark: "Lobby phone",
+      siteId: "site-1",
+      sipServer1: {
+        host: "6437.nimbusip.com",
+        port: 5060
+      }
+    },
+    sampleEnv,
+    {
+      accessToken: "token-789",
+      timestamp: 1730000000000,
+      nonce: "nonce-123"
+    }
+  );
+
+  assert.equal(request.url, "https://eu-api.ymcs.yealink.com/v2/dm/sipAccounts");
+  assert.deepEqual(request.body, {
+    registerName: "1000",
+    username: "1000",
+    password: "secret",
+    label: "Front Desk",
+    displayName: "Front Desk",
+    remark: "Lobby phone",
+    siteId: "site-1",
+    sipServer1: {
+      host: "6437.nimbusip.com",
+      port: 5060
+    }
+  });
+  assert.equal(request.headers.Authorization, "Bearer token-789");
+  assert.equal(request.headers["Content-Type"], "application/json;charset=UTF-8");
+});
+
+test("buildListAccountsRequest targets YMCS account list endpoint", () => {
+  const request = buildListAccountsRequest(
+    {
+      skip: 0,
+      limit: 100,
+      username: "1000"
+    },
+    sampleEnv,
+    {
+      accessToken: "token-789",
+      timestamp: 1730000000000,
+      nonce: "nonce-123"
+    }
+  );
+
+  assert.equal(request.url, "https://eu-api.ymcs.yealink.com/v2/dm/listAccounts");
+  assert.deepEqual(request.body, {
+    skip: 0,
+    limit: 100,
+    autoCount: true,
+    filter: {
+      username: "1000"
+    }
+  });
+});
+
+test("buildBindAccountsRequest targets YMCS device account binding endpoint", () => {
+  const request = buildBindAccountsRequest(
+    {
+      deviceId: "device-1",
+      accounts: [{
+        lineId: 1,
+        accountType: 0,
+        accountId: "account-1"
+      }]
+    },
+    sampleEnv,
+    {
+      accessToken: "token-789",
+      timestamp: 1730000000000,
+      nonce: "nonce-123"
+    }
+  );
+
+  assert.equal(request.url, "https://eu-api.ymcs.yealink.com/v2/dm/devices/device-1/bindAccounts");
+  assert.deepEqual(request.body, {
+    accounts: [{
+      lineId: 1,
+      accountType: 0,
+      accountId: "account-1"
+    }]
+  });
+  assert.equal(request.headers.Authorization, "Bearer token-789");
 });
 
 test("extractYmcsMessage prefers structured message fields", () => {

@@ -7,7 +7,7 @@ import {
   validateConfigInput
 } from "./yealink-cfg.js";
 
-const views = ["device", "multiple", "search", "contacts", "configuration"];
+const views = ["device", "multiple", "search", "accounts", "contacts", "configuration"];
 const navButtons = Array.from(document.querySelectorAll("[data-view]"));
 const workspaceTitle = document.querySelector("#workspace-title");
 const quickAddButton = document.querySelector("#quick-add-button");
@@ -23,6 +23,17 @@ const ipLookupModalTitle = document.querySelector("#ip-lookup-modal-title");
 const ipLookupModalMessage = document.querySelector("#ip-lookup-modal-message");
 const ipLookupModalContent = document.querySelector("#ip-lookup-modal-content");
 const ipLookupModalCloseButton = document.querySelector("#ip-lookup-modal-close");
+const sipAccountModal = document.querySelector("#sip-account-modal");
+const sipAccountModalTitle = document.querySelector("#sip-account-modal-title");
+const sipAccountModalMessage = document.querySelector("#sip-account-modal-message");
+const sipAccountForm = document.querySelector("#sip-account-form");
+const sipAccountSaveButton = document.querySelector("#sip-account-save-button");
+const sipAccountCancelButton = document.querySelector("#sip-account-cancel-button");
+const sipAccountResponsePanel = document.querySelector("#sip-account-response-panel");
+const sipAccountResponseBadge = document.querySelector("#sip-account-response-badge");
+const sipAccountResponseMessage = document.querySelector("#sip-account-response-message");
+const sipBindOption = document.querySelector("#sip-bind-option");
+const sipBindAfterSaveCheckbox = document.querySelector("#sip-bind-after-save");
 
 const authLoading = document.querySelector("#auth-loading");
 const loginShell = document.querySelector("#login-shell");
@@ -42,6 +53,12 @@ const siteInput = document.querySelector("#site-input");
 const selectedSiteIdInput = document.querySelector("#selected-site-id");
 const siteMenu = document.querySelector("#site-menu");
 const siteToggle = document.querySelector("#site-toggle");
+const deviceAccountInput = document.querySelector("#device-account-input");
+const selectedDeviceAccountIdInput = document.querySelector("#selected-device-account-id");
+const deviceAccountMenu = document.querySelector("#device-account-menu");
+const deviceAccountToggle = document.querySelector("#device-account-toggle");
+const deviceAccountAddButton = document.querySelector("#device-account-add-button");
+const deviceAccountNote = document.querySelector("#device-account-note");
 const responsePanel = document.querySelector("#response-panel");
 const responseBadge = document.querySelector("#response-badge");
 const responseMessage = document.querySelector("#response-message");
@@ -94,6 +111,16 @@ const searchPendingCountInline = document.querySelector("#search-pending-count-i
 const searchInactiveCountInline = document.querySelector("#search-inactive-count-inline");
 const statusFilterButtons = Array.from(document.querySelectorAll("[data-status-filter]"));
 
+const accountsSearchInput = document.querySelector("#accounts-search-input");
+const accountsSearchClearButton = document.querySelector("#accounts-search-clear-button");
+const accountsRefreshButton = document.querySelector("#accounts-refresh-button");
+const accountsAddButton = document.querySelector("#accounts-add-button");
+const accountsResults = document.querySelector("#accounts-results");
+const accountsTotalCount = document.querySelector("#accounts-total-count");
+const accountsResponsePanel = document.querySelector("#accounts-response-panel");
+const accountsResponseBadge = document.querySelector("#accounts-response-badge");
+const accountsResponseMessage = document.querySelector("#accounts-response-message");
+
 const contactsReadyCount = document.querySelector("#contacts-ready-count");
 const contactsFixedCount = document.querySelector("#contacts-fixed-count");
 const contactsSkippedCount = document.querySelector("#contacts-skipped-count");
@@ -134,18 +161,27 @@ const configW70bRows = document.querySelector("#config-w70b-rows");
 const modelCount = document.querySelector("#model-count");
 const siteCount = document.querySelector("#site-count");
 const deviceSiteNote = document.querySelector("#device-site-note");
+const sipAccountSiteInput = document.querySelector("#sip-account-site-input");
+const selectedSipAccountSiteIdInput = document.querySelector("#selected-sip-account-site-id");
+const sipAccountSiteMenu = document.querySelector("#sip-account-site-menu");
+const sipAccountSiteToggle = document.querySelector("#sip-account-site-toggle");
+const sipAccountSiteNote = document.querySelector("#sip-account-site-note");
 const MAX_BATCH_ROWS = 100;
 
 let modelItems = [];
 let siteItems = [];
+let accountItems = [];
 let filteredModelItems = [];
 let filteredSiteItems = [];
 let modelActiveIndex = -1;
 let siteActiveIndex = -1;
 let batchSiteActiveIndex = -1;
 let batchModelAutoActiveIndex = -1;
+let deviceAccountActiveIndex = -1;
+let sipAccountSiteActiveIndex = -1;
 let batchRowSequence = 0;
 let searchResultItems = [];
+let filteredAccountItems = [];
 let activeStatusFilter = "all";
 let appInitialized = false;
 let batchAutoModelSelection = {
@@ -167,8 +203,12 @@ let configurationDssExpanded = false;
 let confirmModalResolver = null;
 let confirmModalPreviousFocus = null;
 let ipLookupModalPreviousFocus = null;
+let sipAccountModalPreviousFocus = null;
 let ipLookupRequestSequence = 0;
 const ipLookupCache = new Map();
+let sipAccountModalContext = {
+  source: "accounts"
+};
 
 function setCounterText(element, value) {
   if (element) {
@@ -179,7 +219,8 @@ function setCounterText(element, value) {
 function syncModalOpenState() {
   const confirmOpen = Boolean(confirmModal && !confirmModal.classList.contains("hidden"));
   const ipLookupOpen = Boolean(ipLookupModal && !ipLookupModal.classList.contains("hidden"));
-  document.body.classList.toggle("modal-open", confirmOpen || ipLookupOpen);
+  const sipAccountOpen = Boolean(sipAccountModal && !sipAccountModal.classList.contains("hidden"));
+  document.body.classList.toggle("modal-open", confirmOpen || ipLookupOpen || sipAccountOpen);
 }
 
 function closeConfirmModal(confirmed) {
@@ -244,6 +285,30 @@ function closeIpLookupModal() {
 
   const previousFocus = ipLookupModalPreviousFocus;
   ipLookupModalPreviousFocus = null;
+  if (previousFocus instanceof HTMLElement) {
+    previousFocus.focus();
+  }
+}
+
+function closeSipAccountModal(options = {}) {
+  if (!sipAccountModal || sipAccountModal.classList.contains("hidden")) {
+    return;
+  }
+
+  sipAccountModal.classList.add("hidden");
+  sipAccountModal.setAttribute("aria-hidden", "true");
+  syncModalOpenState();
+
+  if (options.resetForm !== false) {
+    sipAccountForm?.reset();
+    if (selectedSipAccountSiteIdInput) {
+      selectedSipAccountSiteIdInput.value = "";
+    }
+    resetResponseState(sipAccountResponsePanel, sipAccountResponseMessage);
+  }
+
+  const previousFocus = sipAccountModalPreviousFocus;
+  sipAccountModalPreviousFocus = null;
   if (previousFocus instanceof HTMLElement) {
     previousFocus.focus();
   }
@@ -849,11 +914,15 @@ function initializeConfigurationTool() {
 function resetAppState() {
   modelItems = [];
   siteItems = [];
+  accountItems = [];
   filteredModelItems = [];
   filteredSiteItems = [];
+  filteredAccountItems = [];
   modelActiveIndex = -1;
   siteActiveIndex = -1;
   batchSiteActiveIndex = -1;
+  deviceAccountActiveIndex = -1;
+  sipAccountSiteActiveIndex = -1;
   batchRowSequence = 0;
   searchResultItems = [];
   activeStatusFilter = "all";
@@ -872,28 +941,40 @@ function resetAppState() {
   hideMenu(modelMenu, modelInput);
   hideMenu(siteMenu, siteInput);
   hideMenu(batchSiteMenu, batchSiteInput);
+  hideMenu(deviceAccountMenu, deviceAccountInput);
+  hideMenu(sipAccountSiteMenu, sipAccountSiteInput);
+  closeSipAccountModal();
 
   deviceForm.reset();
   resetBatchForm();
+  resetSipAccountForm();
+  setSelectedDeviceAccount(null);
 
   selectedModelIdInput.value = "";
   selectedSiteIdInput.value = "";
   selectedBatchSiteIdInput.value = "";
+  selectedDeviceAccountIdInput.value = "";
+  selectedSipAccountSiteIdInput.value = "";
   searchInput.value = "";
   searchFilterInput.value = "";
+  accountsSearchInput.value = "";
   searchResults.innerHTML = "";
+  accountsResults.innerHTML = "";
   searchScope.textContent = "Searching inside NIMBUSIP";
   searchScopeTitle.textContent = "NIMBUSIP";
   searchScopeDetails.textContent = "Loading site scope from YMCS...";
   modelCount.textContent = "0";
   siteCount.textContent = "0";
+  setCounterText(accountsTotalCount, 0);
   resetSearchCounters();
   resetContactsGenerator();
   resetConfigurationTool();
   resetResponseState(responsePanel, responseMessage);
   resetResponseState(batchResponsePanel, batchResponseMessage);
+  resetResponseState(accountsResponsePanel, accountsResponseMessage);
   updateInputClearButton(searchInput, searchClearButton);
   updateInputClearButton(searchFilterInput, searchFilterClearButton);
+  updateInputClearButton(accountsSearchInput, accountsSearchClearButton);
   syncActiveStatusButtons();
 }
 
@@ -990,6 +1071,7 @@ function applyLockedSiteScopeToInputs() {
 
   setSiteControlState(siteInput, selectedSiteIdInput, siteToggle, deviceSiteNote, lockedSite);
   setSiteControlState(batchSiteInput, selectedBatchSiteIdInput, batchSiteToggle, batchSiteNote, lockedSite);
+  setSiteControlState(sipAccountSiteInput, selectedSipAccountSiteIdInput, sipAccountSiteToggle, sipAccountSiteNote, lockedSite);
 
   if (!lockedSite) {
     if (deviceSiteNote) {
@@ -998,6 +1080,10 @@ function applyLockedSiteScopeToInputs() {
 
     if (batchSiteNote) {
       batchSiteNote.textContent = "Every imported or manual row in this batch will be added to the selected site.";
+    }
+
+    if (sipAccountSiteNote) {
+      sipAccountSiteNote.textContent = "Optional. You can assign this account to a YMCS site.";
     }
   }
 }
@@ -1019,6 +1105,8 @@ function activateView(view) {
     ? "Search Devices"
     : view === "multiple"
       ? "Multiple Devices"
+      : view === "accounts"
+        ? "SIP Accounts"
       : view === "contacts"
         ? "Contacts Generate"
         : view === "configuration"
@@ -1027,6 +1115,17 @@ function activateView(view) {
   quickAddButton.classList.toggle("hidden", view === "contacts" || view === "configuration");
 
   syncSearchAutoRefresh();
+  if (view === "accounts") {
+    void loadAccounts().catch((error) => {
+      setResponseState(
+        accountsResponsePanel,
+        accountsResponseBadge,
+        accountsResponseMessage,
+        false,
+        error instanceof Error ? error.message : "Unable to load SIP accounts."
+      );
+    });
+  }
 }
 
 function normalizeCatalogText(value) {
@@ -1240,6 +1339,257 @@ function renderSites(menu, input, hiddenInput, stateSetter) {
   );
 }
 
+function getFilteredAccountItems(query = "") {
+  const needle = normalizeCatalogText(query);
+
+  if (!needle) {
+    return accountItems.slice();
+  }
+
+  return accountItems.filter((item) => [
+    item.username,
+    item.registerName,
+    item.serverAddress,
+    item.remark,
+    item.siteName,
+    item.siteParentName,
+    item.id
+  ].some((value) => normalizeCatalogText(value).includes(needle)));
+}
+
+function getAccountDisplayValue(item) {
+  if (!item) {
+    return "";
+  }
+
+  const username = String(item.username || "").trim();
+  const serverAddress = String(item.serverAddress || "").trim();
+  return serverAddress ? `${username} - ${serverAddress}` : username;
+}
+
+function getAccountSiteDisplayValue(item) {
+  if (!item) {
+    return "-";
+  }
+
+  return item.siteParentName
+    ? `${item.siteName || "-"} - ${item.siteParentName}`
+    : (item.siteName || "-");
+}
+
+function formatAccountType(value) {
+  switch (Number(value)) {
+    case 1:
+      return "H323";
+    case 2:
+      return "SFB";
+    case 0:
+    default:
+      return "SIP";
+  }
+}
+
+function formatTimestamp(value) {
+  const timestamp = Number(value);
+  if (!timestamp) {
+    return "-";
+  }
+
+  const date = new Date(timestamp);
+  return Number.isNaN(date.getTime()) ? "-" : date.toLocaleString();
+}
+
+function renderDeviceAccountMenu(query = "") {
+  if (!deviceAccountMenu || !deviceAccountInput || !selectedDeviceAccountIdInput) {
+    return;
+  }
+
+  const items = getFilteredAccountItems(query);
+  filteredAccountItems = items;
+  renderComboMenu(
+    deviceAccountMenu,
+    items.map((item) => ({
+      ...item,
+      label: getAccountDisplayValue(item)
+    })),
+    "No matching SIP account. Use + SIP Account to create one.",
+    (item) => {
+      setSelectedDeviceAccount(item);
+      hideMenu(deviceAccountMenu, deviceAccountInput);
+      deviceAccountActiveIndex = -1;
+    }
+  );
+
+  deviceAccountActiveIndex = normalizeCatalogText(query) && items.length > 0 ? 0 : -1;
+  setActiveOption(deviceAccountMenu, deviceAccountActiveIndex);
+}
+
+function renderAccountsResults(items) {
+  accountsResults.innerHTML = "";
+
+  if (items.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "search-empty";
+    empty.textContent = "No SIP accounts matched this search.";
+    accountsResults.append(empty);
+    return;
+  }
+
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "accounts-row";
+    row.innerHTML = `
+      <span class="account-cell">
+        <small class="account-cell-label">Username</small>
+        <strong class="account-cell-value">${escapeHtml(item.username || "-")}</strong>
+      </span>
+      <span class="account-cell">
+        <small class="account-cell-label">Register Name</small>
+        <span class="account-cell-value">${escapeHtml(item.registerName || "-")}</span>
+      </span>
+      <span class="account-cell">
+        <small class="account-cell-label">Server</small>
+        <span class="account-cell-value">${escapeHtml(item.serverAddress || "-")}</span>
+      </span>
+      <span class="account-cell">
+        <small class="account-cell-label">Type</small>
+        <span class="account-type-pill">${escapeHtml(formatAccountType(item.accountType))}</span>
+      </span>
+      <span class="account-cell">
+        <small class="account-cell-label">Site</small>
+        <span class="account-cell-value">${escapeHtml(getAccountSiteDisplayValue(item))}</span>
+      </span>
+      <span class="account-cell">
+        <small class="account-cell-label">Created</small>
+        <span class="account-cell-value">${escapeHtml(formatTimestamp(item.createTime))}</span>
+      </span>
+    `;
+    accountsResults.append(row);
+  });
+}
+
+function applyAccountsFilter() {
+  const query = accountsSearchInput?.value.trim() || "";
+  const items = getFilteredAccountItems(query);
+  renderAccountsResults(items);
+}
+
+function findSiteItemById(siteId) {
+  const normalizedId = String(siteId || "").trim();
+  return siteItems.find((item) => item.siteId === normalizedId) || null;
+}
+
+function setSipAccountSiteSelection(siteId = "") {
+  const normalizedId = String(siteId || "").trim();
+  const matched = findSiteItemById(normalizedId);
+  selectedSipAccountSiteIdInput.value = normalizedId;
+  sipAccountSiteInput.value = matched ? matched.name : normalizedId;
+}
+
+function setSelectedDeviceAccount(item = null) {
+  if (!deviceAccountInput || !selectedDeviceAccountIdInput) {
+    return;
+  }
+
+  if (!item) {
+    deviceAccountInput.value = "";
+    selectedDeviceAccountIdInput.value = "";
+    if (deviceAccountNote) {
+      deviceAccountNote.innerHTML = "Optional. The selected SIP account will bind to line <code>1</code> after the device is created.";
+    }
+    return;
+  }
+
+  deviceAccountInput.value = getAccountDisplayValue(item);
+  selectedDeviceAccountIdInput.value = item.id || "";
+  if (deviceAccountNote) {
+    deviceAccountNote.innerHTML = `Selected account <code>${escapeHtml(item.username || item.id || "")}</code> will bind to line <code>1</code> after the device is created.`;
+  }
+}
+
+function resetSipAccountForm() {
+  sipAccountForm?.reset();
+  resetResponseState(sipAccountResponsePanel, sipAccountResponseMessage);
+  selectedSipAccountSiteIdInput.value = "";
+  sipAccountSiteInput.value = "";
+  sipAccountSiteActiveIndex = -1;
+}
+
+function openSipAccountModal(context = {}) {
+  sipAccountModalContext = {
+    source: context.source || "accounts"
+  };
+  sipAccountModalPreviousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  resetSipAccountForm();
+
+  const currentSiteId = String(context.siteId || "").trim()
+    || selectedSiteIdInput.value.trim();
+
+  if (currentSiteId) {
+    setSipAccountSiteSelection(currentSiteId);
+  }
+
+  const bindOptionVisible = context.source === "device";
+  sipBindOption.classList.toggle("hidden", !bindOptionVisible);
+  sipBindAfterSaveCheckbox.checked = bindOptionVisible;
+  sipAccountModalTitle.textContent = bindOptionVisible ? "Add SIP Account For Device" : "Add SIP Account";
+  sipAccountModalMessage.textContent = bindOptionVisible
+    ? "Create a SIP account in YMCS. If you keep binding enabled, it will be attached to the device after you save that device."
+    : "Create a SIP account directly in YMCS and keep it ready for later device binding.";
+  sipAccountModal.classList.remove("hidden");
+  sipAccountModal.setAttribute("aria-hidden", "false");
+  syncModalOpenState();
+  window.requestAnimationFrame(() => {
+    sipAccountForm?.elements?.registerName?.focus?.();
+  });
+}
+
+function mergeAccountItem(item) {
+  const nextItems = [item, ...accountItems.filter((entry) => entry.id !== item.id)];
+  accountItems = nextItems;
+  filteredAccountItems = getFilteredAccountItems(deviceAccountInput?.value.trim() || "");
+  setCounterText(accountsTotalCount, accountItems.length);
+  applyAccountsFilter();
+  renderDeviceAccountMenu(deviceAccountInput?.value.trim() || "");
+}
+
+function buildSipAccountPayload() {
+  return {
+    registerName: sipAccountForm.elements.registerName.value.trim(),
+    username: sipAccountForm.elements.username.value.trim(),
+    password: sipAccountForm.elements.password.value.trim(),
+    label: sipAccountForm.elements.label.value.trim(),
+    displayName: sipAccountForm.elements.displayName.value.trim(),
+    remark: sipAccountForm.elements.remark.value.trim(),
+    siteId: selectedSipAccountSiteIdInput.value.trim() || sipAccountSiteInput.value.trim(),
+    sipServer1: {
+      host: sipAccountForm.elements.sipServer1Host.value.trim(),
+      port: sipAccountForm.elements.sipServer1Port.value.trim()
+    },
+    sipServer2: {
+      host: sipAccountForm.elements.sipServer2Host.value.trim(),
+      port: sipAccountForm.elements.sipServer2Port.value.trim()
+    }
+  };
+}
+
+function normalizeCreatedAccount(payload, requestBody) {
+  const siteId = String(requestBody?.siteId ?? "").trim();
+  const site = findSiteItemById(siteId);
+  return {
+    id: String(payload?.id || "").trim(),
+    username: String(payload?.username || requestBody?.username || "").trim(),
+    registerName: String(payload?.registerName || payload?.registerInfo || requestBody?.registerName || "").trim(),
+    serverAddress: String(payload?.serverAddress || requestBody?.sipServer1?.host || "").trim(),
+    accountType: Number(payload?.accountType ?? 0),
+    remark: String(payload?.remark || requestBody?.remark || "").trim(),
+    createTime: Number(payload?.createTime ?? Date.now()),
+    siteId,
+    siteName: site?.name || String(payload?.siteName || "").trim(),
+    siteParentName: site?.parentName || String(payload?.siteParentName || "").trim()
+  };
+}
+
 function findModelItem(value) {
   const trimmed = String(value || "").trim();
   if (!trimmed) {
@@ -1369,6 +1719,10 @@ function setBatchAutoModelSelection(selection = {}) {
 }
 
 function buildSuccessMessage(payload) {
+  if (payload?.message && payload?.bindResult) {
+    return payload.message;
+  }
+
   const model = modelInput.value.trim() || payload?.requestBody?.modelId || "Unknown model";
   const mac = payload?.payload?.mac || payload?.requestBody?.mac || deviceForm.elements.mac.value.trim();
   return `Device "${model}"  Mac: "${mac}"  Device created successfully.`;
@@ -2318,7 +2672,25 @@ async function loadSites(query = "") {
   renderSites(batchSiteMenu, batchSiteInput, selectedBatchSiteIdInput, (value) => {
     batchSiteActiveIndex = value;
   });
+  renderSites(sipAccountSiteMenu, sipAccountSiteInput, selectedSipAccountSiteIdInput, (value) => {
+    sipAccountSiteActiveIndex = value;
+  });
   applyLockedSiteScopeToInputs();
+}
+
+async function loadAccounts(query = "", options = {}) {
+  const forceReload = options.forceReload === true;
+
+  if (forceReload || accountItems.length === 0) {
+    const response = await apiFetch("/api/accounts");
+    const data = await response.json();
+    accountItems = data.items || [];
+    setCounterText(accountsTotalCount, data.total || accountItems.length);
+  }
+
+  filteredAccountItems = getFilteredAccountItems(query);
+  renderDeviceAccountMenu(deviceAccountInput?.value.trim() || query);
+  applyAccountsFilter();
 }
 
 async function runSearch(query = "", options = {}) {
@@ -2509,6 +2881,16 @@ ipLookupModal?.addEventListener("click", (event) => {
   }
 });
 
+sipAccountCancelButton?.addEventListener("click", () => {
+  closeSipAccountModal();
+});
+
+sipAccountModal?.addEventListener("click", (event) => {
+  if (event.target === sipAccountModal) {
+    closeSipAccountModal();
+  }
+});
+
 searchResults?.addEventListener("click", (event) => {
   const trigger = event.target instanceof Element
     ? event.target.closest("[data-ip-lookup-trigger]")
@@ -2522,6 +2904,12 @@ searchResults?.addEventListener("click", (event) => {
 });
 
 document.addEventListener("keydown", (event) => {
+  if (event.key === "Escape" && sipAccountModal && !sipAccountModal.classList.contains("hidden")) {
+    event.preventDefault();
+    closeSipAccountModal();
+    return;
+  }
+
   if (event.key === "Escape" && ipLookupModal && !ipLookupModal.classList.contains("hidden")) {
     event.preventDefault();
     closeIpLookupModal();
@@ -2644,6 +3032,63 @@ batchModelAutoToggle.addEventListener("click", async () => {
   batchModelAutoActiveIndex = -1;
 });
 
+deviceAccountToggle.addEventListener("click", async () => {
+  if (deviceAccountMenu.classList.contains("hidden")) {
+    await loadAccounts(deviceAccountInput.value.trim());
+    renderDeviceAccountMenu(deviceAccountInput.value.trim());
+    showMenu(deviceAccountMenu, deviceAccountInput);
+    return;
+  }
+
+  hideMenu(deviceAccountMenu, deviceAccountInput);
+  deviceAccountActiveIndex = -1;
+});
+
+deviceAccountAddButton.addEventListener("click", async () => {
+  await loadSites();
+  openSipAccountModal({
+    source: "device",
+    siteId: selectedSiteIdInput.value.trim()
+  });
+});
+
+accountsAddButton.addEventListener("click", async () => {
+  await loadSites();
+  openSipAccountModal({
+    source: "accounts"
+  });
+});
+
+accountsRefreshButton.addEventListener("click", async () => {
+  try {
+    await loadAccounts(accountsSearchInput.value.trim(), { forceReload: true });
+    setResponseState(accountsResponsePanel, accountsResponseBadge, accountsResponseMessage, true, "SIP account list refreshed.");
+  } catch (error) {
+    setResponseState(
+      accountsResponsePanel,
+      accountsResponseBadge,
+      accountsResponseMessage,
+      false,
+      error instanceof Error ? error.message : "Unable to refresh SIP accounts."
+    );
+  }
+});
+
+sipAccountSiteToggle.addEventListener("click", async () => {
+  if (isLockedSiteUser()) {
+    return;
+  }
+
+  if (sipAccountSiteMenu.classList.contains("hidden")) {
+    await loadSites(sipAccountSiteInput.value.trim());
+    showMenu(sipAccountSiteMenu, sipAccountSiteInput);
+    return;
+  }
+
+  hideMenu(sipAccountSiteMenu, sipAccountSiteInput);
+  sipAccountSiteActiveIndex = -1;
+});
+
 modelInput.addEventListener("focus", async () => {
   await loadModels(modelInput.value.trim());
   showMenu(modelMenu, modelInput);
@@ -2704,6 +3149,41 @@ batchModelAutoInput.addEventListener("input", async () => {
   await loadModels(batchModelAutoInput.value.trim());
   renderBatchModelAutoMenu(batchModelAutoInput.value.trim());
   showMenu(batchModelAutoMenu, batchModelAutoInput);
+});
+
+deviceAccountInput.addEventListener("focus", async () => {
+  await loadAccounts(deviceAccountInput.value.trim());
+  renderDeviceAccountMenu(deviceAccountInput.value.trim());
+  showMenu(deviceAccountMenu, deviceAccountInput);
+});
+
+deviceAccountInput.addEventListener("input", async () => {
+  selectedDeviceAccountIdInput.value = "";
+  if (!deviceAccountInput.value.trim()) {
+    setSelectedDeviceAccount(null);
+  }
+  await loadAccounts(deviceAccountInput.value.trim());
+  renderDeviceAccountMenu(deviceAccountInput.value.trim());
+  showMenu(deviceAccountMenu, deviceAccountInput);
+});
+
+sipAccountSiteInput.addEventListener("focus", async () => {
+  if (isLockedSiteUser()) {
+    return;
+  }
+
+  await loadSites(sipAccountSiteInput.value.trim());
+  showMenu(sipAccountSiteMenu, sipAccountSiteInput);
+});
+
+sipAccountSiteInput.addEventListener("input", async () => {
+  if (isLockedSiteUser()) {
+    return;
+  }
+
+  selectedSipAccountSiteIdInput.value = "";
+  await loadSites(sipAccountSiteInput.value.trim());
+  showMenu(sipAccountSiteMenu, sipAccountSiteInput);
 });
 
 modelInput.addEventListener("keydown", (event) => {
@@ -2776,12 +3256,49 @@ batchModelAutoInput.addEventListener("keydown", (event) => {
   }
 });
 
+deviceAccountInput.addEventListener("keydown", (event) => {
+  const nextIndex = handleComboKeys(event, deviceAccountMenu, {
+    activeIndex: deviceAccountActiveIndex,
+    input: deviceAccountInput
+  });
+
+  if (nextIndex === null) {
+    return;
+  }
+
+  deviceAccountActiveIndex = nextIndex;
+  setActiveOption(deviceAccountMenu, deviceAccountActiveIndex);
+});
+
+sipAccountSiteInput.addEventListener("keydown", (event) => {
+  if (isLockedSiteUser()) {
+    return;
+  }
+
+  const nextIndex = handleComboKeys(event, sipAccountSiteMenu, {
+    activeIndex: sipAccountSiteActiveIndex,
+    input: sipAccountSiteInput
+  });
+
+  if (nextIndex === null) {
+    return;
+  }
+
+  sipAccountSiteActiveIndex = nextIndex;
+  setActiveOption(sipAccountSiteMenu, sipAccountSiteActiveIndex);
+});
+
 batchModelAutoInput.addEventListener("change", () => {
   commitBatchAutoModelSelection();
 });
 
 batchRowCountInput.addEventListener("input", () => {
   syncBatchRowCountInput();
+});
+
+accountsSearchInput.addEventListener("input", () => {
+  updateInputClearButton(accountsSearchInput, accountsSearchClearButton);
+  applyAccountsFilter();
 });
 
 document.addEventListener("click", (event) => {
@@ -2805,6 +3322,16 @@ document.addEventListener("click", (event) => {
     batchModelAutoActiveIndex = -1;
   }
 
+  if (!event.target.closest("#device-account-combo")) {
+    hideMenu(deviceAccountMenu, deviceAccountInput);
+    deviceAccountActiveIndex = -1;
+  }
+
+  if (!event.target.closest("#sip-account-site-combo")) {
+    hideMenu(sipAccountSiteMenu, sipAccountSiteInput);
+    sipAccountSiteActiveIndex = -1;
+  }
+
   batchRows.querySelectorAll(".batch-row").forEach((row) => {
     const combo = row.querySelector(".batch-model-combo");
     if (combo && !combo.contains(event.target)) {
@@ -2816,14 +3343,76 @@ document.addEventListener("click", (event) => {
 deviceForm.addEventListener("reset", () => {
   hideMenu(modelMenu, modelInput);
   hideMenu(siteMenu, siteInput);
+  hideMenu(deviceAccountMenu, deviceAccountInput);
   modelActiveIndex = -1;
   siteActiveIndex = -1;
+  deviceAccountActiveIndex = -1;
   resetResponseState(responsePanel, responseMessage);
   selectedModelIdInput.value = "";
+  setSelectedDeviceAccount(null);
   if (isLockedSiteUser()) {
     applyLockedSiteScopeToInputs();
   } else {
     selectedSiteIdInput.value = "";
+  }
+});
+
+sipAccountForm.addEventListener("submit", async (event) => {
+  event.preventDefault();
+  sipAccountSaveButton.disabled = true;
+  sipAccountSaveButton.textContent = "Saving...";
+
+  try {
+    const response = await apiFetch("/api/accounts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(buildSipAccountPayload())
+    });
+    const data = await response.json();
+
+    if (!response.ok || !data.ok) {
+      throw new Error(data.message || "SIP account request failed.");
+    }
+
+    const createdAccount = normalizeCreatedAccount(data.payload, data.requestBody);
+    if (createdAccount.id) {
+      mergeAccountItem(createdAccount);
+    } else {
+      await loadAccounts("", { forceReload: true });
+    }
+
+    if (sipAccountModalContext.source === "device") {
+      if (sipBindAfterSaveCheckbox.checked && createdAccount.id) {
+        setSelectedDeviceAccount(createdAccount);
+      }
+
+      setResponseState(
+        responsePanel,
+        responseBadge,
+        responseMessage,
+        true,
+        sipBindAfterSaveCheckbox.checked
+          ? `${data.message} It is selected for binding when you save the device.`
+          : `${data.message} You can select it later from the SIP Account list.`
+      );
+    } else {
+      setResponseState(accountsResponsePanel, accountsResponseBadge, accountsResponseMessage, true, data.message || "SIP account created successfully.");
+    }
+
+    closeSipAccountModal();
+  } catch (error) {
+    setResponseState(
+      sipAccountResponsePanel,
+      sipAccountResponseBadge,
+      sipAccountResponseMessage,
+      false,
+      error instanceof Error ? error.message : "SIP account request failed."
+    );
+  } finally {
+    sipAccountSaveButton.disabled = false;
+    sipAccountSaveButton.textContent = "Save SIP Account";
   }
 });
 
@@ -2832,12 +3421,26 @@ deviceForm.addEventListener("submit", async (event) => {
   saveButton.disabled = true;
   saveButton.textContent = "Saving...";
 
+  if (deviceAccountInput.value.trim() && !selectedDeviceAccountIdInput.value.trim()) {
+    setResponseState(responsePanel, responseBadge, responseMessage, false, "Choose a SIP account from the list or clear the SIP Account field.");
+    saveButton.disabled = false;
+    saveButton.textContent = "Save";
+    return;
+  }
+
   const payload = {
     name: deviceForm.elements.name.value.trim(),
     mac: deviceForm.elements.mac.value.trim(),
     sn: deviceForm.elements.sn.value.trim(),
     modelInput: selectedModelIdInput.value.trim() || deviceForm.elements.modelInput.value.trim(),
-    siteId: selectedSiteIdInput.value.trim() || deviceForm.elements.siteInput.value.trim()
+    siteId: selectedSiteIdInput.value.trim() || deviceForm.elements.siteInput.value.trim(),
+    sipBinding: selectedDeviceAccountIdInput.value.trim()
+      ? {
+          accountId: selectedDeviceAccountIdInput.value.trim(),
+          lineId: 1,
+          accountType: 0
+        }
+      : null
   };
 
   try {
@@ -2850,8 +3453,8 @@ deviceForm.addEventListener("submit", async (event) => {
     });
     const data = await response.json();
     const message = data.ok ? buildSuccessMessage(data) : (data.message || "Request failed.");
-    setResponseState(responsePanel, responseBadge, responseMessage, Boolean(data.ok), message);
-    if (data.ok) {
+    setResponseState(responsePanel, responseBadge, responseMessage, Boolean(data.ok), data.ok ? buildSuccessMessage(data) : message);
+    if (data.ok || data.deviceCreated) {
       await refreshSearchData();
     }
   } catch (error) {
@@ -3147,6 +3750,13 @@ searchFilterInput.addEventListener("keydown", (event) => {
   }
 });
 
+accountsSearchInput.addEventListener("keydown", (event) => {
+  if (event.key === "Enter") {
+    event.preventDefault();
+    applyAccountsFilter();
+  }
+});
+
 statusFilterButtons.forEach((button) => {
   button.addEventListener("click", () => {
     activeStatusFilter = button.dataset.statusFilter || "all";
@@ -3159,6 +3769,9 @@ bindClearableInput(searchInput, searchClearButton, () => {
 });
 bindClearableInput(searchFilterInput, searchFilterClearButton, () => {
   applySearchFilter();
+});
+bindClearableInput(accountsSearchInput, accountsSearchClearButton, () => {
+  applyAccountsFilter();
 });
 
 bootstrapSession();

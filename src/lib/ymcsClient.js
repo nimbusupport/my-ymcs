@@ -6,6 +6,8 @@ const BATCH_DEVICE_API_PATH = "v2/dm/addDevices";
 const MODELS_API_PATH = "v2/dm/models";
 const LIST_SITES_API_PATH = "v2/dm/listSites";
 const LIST_DEVICES_API_PATH = "v2/dm/listDevices";
+const ADD_SIP_ACCOUNT_API_PATH = "v2/dm/sipAccounts";
+const LIST_ACCOUNTS_API_PATH = "v2/dm/listAccounts";
 const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000;
 const tokenCache = new Map();
 
@@ -312,6 +314,204 @@ export function buildListDevicesRequest(input = {}, env = process.env, options =
   });
 }
 
+function normalizeLimitedText(value, maxLength, label, { required = false } = {}) {
+  const text = String(value ?? "").trim();
+
+  if (required && !text) {
+    throw new Error(`${label} is required.`);
+  }
+
+  if (text.length > maxLength) {
+    throw new Error(`${label} must be ${maxLength} characters or fewer.`);
+  }
+
+  return text;
+}
+
+function normalizeSipServerInput(server, label, { required = false } = {}) {
+  const host = normalizeLimitedText(server?.host ?? "", 256, `${label} host`, { required });
+
+  if (!host && !required) {
+    return null;
+  }
+
+  const portValue = server?.port == null || server.port === ""
+    ? 5060
+    : Number(server.port);
+
+  if (!Number.isInteger(portValue) || portValue < 0 || portValue > 65535) {
+    throw new Error(`${label} port must be an integer between 0 and 65535.`);
+  }
+
+  return {
+    host,
+    port: portValue
+  };
+}
+
+export function validateSipAccountInput(input = {}) {
+  const registerName = normalizeLimitedText(input.registerName, 128, "Register Name", { required: true });
+  const username = normalizeLimitedText(input.username, 128, "Username", { required: true });
+  const password = normalizeLimitedText(input.password, 128, "Password", { required: true });
+  const displayName = normalizeLimitedText(input.displayName, 128, "Display Name");
+  const label = normalizeLimitedText(input.label, 128, "Label");
+  const remark = normalizeLimitedText(input.remark ?? input.description, 512, "Description");
+  const siteId = String(input.siteId ?? "").trim();
+  const sipServer1 = normalizeSipServerInput(input.sipServer1, "Server Address 1", { required: true });
+  const sipServer2 = normalizeSipServerInput(input.sipServer2, "Server Address 2");
+
+  return {
+    registerName,
+    username,
+    password,
+    displayName,
+    label,
+    remark,
+    siteId,
+    sipServer1,
+    sipServer2
+  };
+}
+
+export function buildAddSipAccountRequest(input = {}, env = process.env, options = {}) {
+  const account = validateSipAccountInput(input);
+  const body = {
+    registerName: account.registerName,
+    username: account.username,
+    password: account.password,
+    sipServer1: account.sipServer1
+  };
+
+  if (account.displayName) {
+    body.displayName = account.displayName;
+  }
+
+  if (account.label) {
+    body.label = account.label;
+  }
+
+  if (account.sipServer2) {
+    body.sipServer2 = account.sipServer2;
+  }
+
+  if (account.remark) {
+    body.remark = account.remark;
+  }
+
+  if (account.siteId) {
+    body.siteId = account.siteId;
+  }
+
+  const request = buildAuthorizedRequest("POST", ADD_SIP_ACCOUNT_API_PATH, env, {
+    body,
+    accessToken: options.accessToken,
+    timestamp: options.timestamp,
+    nonce: options.nonce
+  });
+
+  return {
+    ...request,
+    account,
+    body
+  };
+}
+
+export function buildListAccountsRequest(input = {}, env = process.env, options = {}) {
+  const skip = Number(input?.skip ?? 0);
+  const limit = Number(input?.limit ?? 500);
+  const autoCount = input?.autoCount ?? true;
+  const username = String(input?.username ?? input?.filter?.username ?? "").trim();
+
+  if (!Number.isInteger(skip) || skip < 0) {
+    throw new Error("skip must be a non-negative integer.");
+  }
+
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error("limit must be an integer between 1 and 500.");
+  }
+
+  const body = {
+    skip,
+    limit,
+    autoCount: Boolean(autoCount)
+  };
+
+  if (username) {
+    body.filter = {
+      username
+    };
+  }
+
+  return buildAuthorizedRequest("POST", LIST_ACCOUNTS_API_PATH, env, {
+    body,
+    accessToken: options.accessToken,
+    timestamp: options.timestamp,
+    nonce: options.nonce
+  });
+}
+
+export function validateBindAccountsInput(input = {}) {
+  const deviceId = String(input.deviceId ?? "").trim();
+  const rawAccounts = Array.isArray(input.accounts) ? input.accounts : [];
+
+  if (!deviceId) {
+    throw new Error("deviceId is required.");
+  }
+
+  if (rawAccounts.length === 0) {
+    throw new Error("At least one SIP account is required for binding.");
+  }
+
+  const accounts = rawAccounts.map((item, index) => {
+    const accountId = String(item?.accountId ?? "").trim();
+    const lineId = Number(item?.lineId ?? index + 1);
+    const accountType = Number(item?.accountType ?? 0);
+
+    if (!accountId) {
+      throw new Error(`accounts[${index}].accountId is required.`);
+    }
+
+    if (!Number.isInteger(lineId) || lineId < 1) {
+      throw new Error(`accounts[${index}].lineId must be a positive integer.`);
+    }
+
+    if (!Number.isInteger(accountType) || accountType < 0) {
+      throw new Error(`accounts[${index}].accountType must be a non-negative integer.`);
+    }
+
+    return {
+      lineId,
+      accountType,
+      accountId
+    };
+  });
+
+  return {
+    deviceId,
+    accounts
+  };
+}
+
+export function buildBindAccountsRequest(input = {}, env = process.env, options = {}) {
+  const normalized = validateBindAccountsInput(input);
+  const apiPath = `v2/dm/devices/${encodeURIComponent(normalized.deviceId)}/bindAccounts`;
+  const body = options.rawArrayBody === true
+    ? normalized.accounts
+    : { accounts: normalized.accounts };
+  const request = buildAuthorizedRequest("POST", apiPath, env, {
+    body,
+    accessToken: options.accessToken,
+    timestamp: options.timestamp,
+    nonce: options.nonce
+  });
+
+  return {
+    ...request,
+    binding: normalized,
+    body
+  };
+}
+
 export function extractYmcsMessage(payload) {
   if (!payload) {
     return "No response payload was returned from YMCS.";
@@ -446,6 +646,28 @@ export async function addDevices(input = {}, env = process.env) {
   };
 }
 
+export async function addSipAccount(input = {}, env = process.env) {
+  const accessToken = await getAccessToken(env);
+  const request = buildAddSipAccountRequest(input, env, { accessToken });
+  const response = await fetch(request.url, {
+    method: "POST",
+    headers: request.headers,
+    body: request.bodyJson
+  });
+
+  const rawText = await response.text();
+  const payload = parseYmcsPayload(rawText);
+
+  return {
+    ok: response.ok,
+    status: response.status,
+    statusText: response.statusText,
+    message: extractYmcsMessage(payload),
+    payload,
+    requestBody: request.body
+  };
+}
+
 export async function listModels(input = {}, env = process.env) {
   const accessToken = await getAccessToken(env);
   const request = buildListModelsRequest(input, env, { accessToken });
@@ -532,6 +754,95 @@ export async function listSites(input = {}, env = process.env) {
 
     skip += pageItems.length;
   }
+}
+
+export async function listAccounts(input = {}, env = process.env) {
+  const accessToken = await getAccessToken(env);
+  const initialRequest = buildListAccountsRequest(input, env, { accessToken });
+  const collectedItems = [];
+  let lastPayload = null;
+  let skip = Number(input?.skip ?? 0);
+  const limit = Number(input?.limit ?? 500);
+  const username = String(input?.username ?? input?.filter?.username ?? "").trim();
+
+  while (true) {
+    const request = buildListAccountsRequest({ skip, limit, autoCount: true, username }, env, { accessToken });
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: request.bodyJson
+    });
+
+    const rawText = await response.text();
+    const payload = parseYmcsPayload(rawText);
+    lastPayload = payload;
+
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        statusText: response.statusText,
+        message: extractYmcsMessage(payload),
+        payload,
+        items: [],
+        requestUrl: request.url
+      };
+    }
+
+    const pageItems = Array.isArray(payload?.data)
+      ? payload.data
+      : Array.isArray(payload)
+        ? payload
+        : [];
+    const total = Number(payload?.total ?? collectedItems.length + pageItems.length);
+
+    collectedItems.push(...pageItems);
+
+    if (pageItems.length < limit || collectedItems.length >= total) {
+      return {
+        ok: true,
+        status: response.status,
+        statusText: response.statusText,
+        message: extractYmcsMessage(lastPayload),
+        payload: lastPayload,
+        items: collectedItems,
+        requestUrl: initialRequest.url
+      };
+    }
+
+    skip += pageItems.length;
+  }
+}
+
+export async function bindAccountsToDevice(input = {}, env = process.env) {
+  const accessToken = await getAccessToken(env);
+  const attempt = async (rawArrayBody) => {
+    const request = buildBindAccountsRequest(input, env, { accessToken, rawArrayBody });
+    const response = await fetch(request.url, {
+      method: "POST",
+      headers: request.headers,
+      body: request.bodyJson
+    });
+
+    const rawText = await response.text();
+    const payload = parseYmcsPayload(rawText);
+
+    return {
+      ok: response.ok,
+      status: response.status,
+      statusText: response.statusText,
+      message: extractYmcsMessage(payload),
+      payload,
+      requestBody: request.body
+    };
+  };
+
+  const wrappedResult = await attempt(false);
+  if (wrappedResult.ok || wrappedResult.status !== 400) {
+    return wrappedResult;
+  }
+
+  return attempt(true);
 }
 
 export async function listDevices(input = {}, env = process.env) {

@@ -4,7 +4,17 @@ import http from "http";
 import { readFile } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
-import { addDevice, addDevices, listDevices, listModels, listSites, normalizeMac } from "./lib/ymcsClient.js";
+import {
+  addDevice,
+  addDevices,
+  addSipAccount,
+  bindAccountsToDevice,
+  listAccounts,
+  listDevices,
+  listModels,
+  listSites,
+  normalizeMac
+} from "./lib/ymcsClient.js";
 import {
   buildIpConfigLookupUrl,
   buildIpstackLookupUrl,
@@ -54,6 +64,7 @@ const contentTypes = new Map([
 ]);
 const modelCacheTtlMs = Number(process.env.YMCS_MODELS_CACHE_MS || 5 * 60 * 1000);
 const siteCacheTtlMs = Number(process.env.YMCS_SITES_CACHE_MS || 5 * 60 * 1000);
+const accountCacheTtlMs = Number(process.env.YMCS_ACCOUNTS_CACHE_MS || 60 * 1000);
 const ipLookupCacheTtlMs = Number(process.env.IPSTACK_CACHE_MS || 15 * 60 * 1000);
 const sessionSecret = String(
   process.env.SESSION_SECRET
@@ -70,6 +81,10 @@ let cachedSites = {
   items: []
 };
 let cachedDevices = {
+  expiresAt: 0,
+  items: []
+};
+let cachedAccounts = {
   expiresAt: 0,
   items: []
 };
@@ -508,6 +523,28 @@ function normalizeYmcsDevice(item) {
   };
 }
 
+function normalizeYmcsAccount(item) {
+  const id = String(item?.id ?? item?.accountId ?? "").trim();
+  const username = String(item?.username ?? "").trim();
+
+  if (!id || !username) {
+    return null;
+  }
+
+  return {
+    id,
+    username,
+    registerName: String(item?.registerName ?? item?.registerInfo ?? "").trim(),
+    serverAddress: String(item?.serverAddress ?? item?.accountServer ?? "").trim(),
+    accountType: Number.isInteger(item?.accountType) ? item.accountType : Number(item?.accountType ?? 0),
+    remark: String(item?.remark ?? item?.description ?? "").trim(),
+    createTime: Number(item?.createTime ?? 0),
+    siteId: String(item?.siteId ?? "").trim(),
+    siteName: String(item?.siteName ?? "").trim(),
+    siteParentName: String(item?.siteParentName ?? "").trim()
+  };
+}
+
 async function getYmcsModels() {
   if (cachedModels.expiresAt > Date.now() && cachedModels.items.length > 0) {
     return cachedModels.items;
@@ -803,6 +840,96 @@ function mapBatchMessage(result) {
   return result?.message || "Batch request completed.";
 }
 
+function buildSipAccountSuccessMessage(result) {
+  const payload = result?.payload || {};
+  const username = String(payload.username || result?.requestBody?.username || "").trim();
+  return username
+    ? `SIP account "${username}" created successfully.`
+    : "SIP account created successfully.";
+}
+
+function buildBindAccountsMessage(result) {
+  const payload = result?.payload || {};
+  const successCount = Number(payload.successCount ?? 0);
+  const failureCount = Number(payload.failureCount ?? 0);
+  const total = Number(payload.total ?? successCount + failureCount);
+  const errors = Array.isArray(payload.errors)
+    ? payload.errors
+      .map((item) => {
+        const field = String(item?.field ?? "").trim();
+        const msg = String(item?.msg ?? item?.message ?? "").trim();
+        return field && msg ? `${field}: ${msg}` : (msg || field);
+      })
+      .filter(Boolean)
+    : [];
+
+  if (total > 0 && failureCount === 0 && successCount === total) {
+    return `${successCount} SIP account binding${successCount === 1 ? "" : "s"} completed successfully.`;
+  }
+
+  if (successCount > 0 || failureCount > 0) {
+    const summary = `${successCount} binding${successCount === 1 ? "" : "s"} succeeded, ${failureCount} failed.`;
+    return errors.length > 0 ? `${summary} YMCS: ${errors.join(" | ")}` : summary;
+  }
+
+  return result?.message || "SIP account binding completed.";
+}
+
+async function addDeviceWithOptionalSipBinding(body, env) {
+  const result = await addDevice(body, env);
+
+  if (!result.ok) {
+    return result;
+  }
+
+  const accountId = String(body?.sipBinding?.accountId ?? "").trim();
+  if (!accountId) {
+    return {
+      ...result,
+      message: result.message || "Device created successfully.",
+      deviceCreated: true,
+      bindResult: null
+    };
+  }
+
+  const deviceId = String(result?.payload?.id ?? "").trim();
+  if (!deviceId) {
+    return {
+      ...result,
+      ok: false,
+      message: "Device was created, but YMCS did not return a device ID for SIP account binding.",
+      deviceCreated: true,
+      bindResult: null
+    };
+  }
+
+  const bindResult = await bindAccountsToDevice({
+    deviceId,
+    accounts: [{
+      accountId,
+      lineId: Number(body?.sipBinding?.lineId ?? 1),
+      accountType: Number(body?.sipBinding?.accountType ?? 0)
+    }]
+  }, env);
+
+  if (bindResult.ok) {
+    return {
+      ...result,
+      message: `${result.message || "Device created successfully."} SIP account bound successfully.`,
+      deviceCreated: true,
+      bindResult
+    };
+  }
+
+  return {
+    ...result,
+    ok: false,
+    message: `${result.message || "Device created successfully."} SIP account binding failed. ${buildBindAccountsMessage(bindResult)}`,
+    deviceCreated: true,
+    bindResult
+  };
+}
+
 function getBatchErrorDetails(payload) {
   const rawErrors = Array.isArray(payload?.errors) ? payload.errors : [];
 
@@ -924,6 +1051,104 @@ async function getYmcsDevices(env = process.env) {
   }
 
   return items;
+}
+
+function attachSiteContextToAccounts(accounts, sites) {
+  const sitesById = new Map(sites.map((site) => [site.siteId, site]));
+
+  return accounts.map((account) => {
+    if (!account.siteId) {
+      return account;
+    }
+
+    const site = sitesById.get(account.siteId);
+    if (!site) {
+      return account;
+    }
+
+    return {
+      ...account,
+      siteName: account.siteName || site.name,
+      siteParentName: account.siteParentName || site.parentName || ""
+    };
+  });
+}
+
+function filterAccounts(items, query) {
+  const needle = canonicalizeSearchText(query);
+
+  if (!needle) {
+    return items.slice();
+  }
+
+  return items.filter((item) => [
+    item.id,
+    item.username,
+    item.registerName,
+    item.serverAddress,
+    item.remark,
+    item.siteId,
+    item.siteName,
+    item.siteParentName
+  ].some((value) => canonicalizeSearchText(value).includes(needle)));
+}
+
+function applyUserSiteScopeToAccountPayload(body, user) {
+  if (!user?.siteScope) {
+    return body;
+  }
+
+  return {
+    ...body,
+    siteId: user.siteScope.siteId
+  };
+}
+
+function applyUserSiteScopeToAccountList(items, user) {
+  if (!user?.siteScope) {
+    return items;
+  }
+
+  return items
+    .filter((item) => !item.siteId || item.siteId === user.siteScope.siteId)
+    .map((item) => (
+      item.siteId === user.siteScope.siteId
+        ? {
+            ...item,
+            siteName: user.siteScope.name
+          }
+        : item
+    ));
+}
+
+async function getYmcsAccounts(env = process.env) {
+  if (env === process.env && cachedAccounts.expiresAt > Date.now() && cachedAccounts.items.length > 0) {
+    return cachedAccounts.items;
+  }
+
+  const result = await listAccounts({ skip: 0, limit: 500 }, env);
+  if (!result.ok) {
+    throw new Error(result.message || `YMCS account lookup failed with status ${result.status}.`);
+  }
+
+  const normalizedAccounts = result.items
+    .map(normalizeYmcsAccount)
+    .filter(Boolean);
+  const sites = await getYmcsSites(env).catch(() => []);
+  const hydratedAccounts = applySiteNameOverrides(attachSiteContextToAccounts(normalizedAccounts, sites))
+    .sort((left, right) => (
+      String(left.username || "").localeCompare(String(right.username || ""))
+      || String(left.registerName || "").localeCompare(String(right.registerName || ""))
+    ));
+
+  if (env === process.env) {
+    cachedAccounts = {
+      expiresAt: Date.now() + accountCacheTtlMs,
+      items: hydratedAccounts
+    };
+  }
+
+  return hydratedAccounts;
 }
 
 async function lookupIpDetails(ipAddress, env = process.env) {
@@ -1201,6 +1426,34 @@ async function handleRequest(req, res) {
     return;
   }
 
+  if (req.method === "GET" && url.pathname === "/api/accounts") {
+    const query = url.searchParams.get("q") || "";
+    const user = getAuthUser(req);
+    const userEnv = getYmcsEnvForUser(user);
+
+    try {
+      const ymcsAccounts = await getYmcsAccounts(userEnv);
+      const scopedAccounts = applyUserSiteScopeToAccountList(ymcsAccounts, user);
+      const items = filterAccounts(scopedAccounts, query);
+
+      sendJson(res, 200, {
+        items,
+        total: scopedAccounts.length,
+        source: "ymcs",
+        scope: user?.siteScope || null
+      });
+    } catch (error) {
+      sendJson(res, 200, {
+        items: [],
+        total: 0,
+        source: "empty",
+        scope: user?.siteScope || null,
+        fallbackReason: error instanceof Error ? error.message : "YMCS account lookup failed."
+      });
+    }
+    return;
+  }
+
   if (req.method === "GET" && url.pathname === "/api/search") {
     const query = url.searchParams.get("q") || "";
     const user = getAuthUser(req);
@@ -1309,12 +1562,35 @@ async function handleRequest(req, res) {
     try {
       const user = getAuthUser(req);
       const body = applyUserSiteScopeToDevicePayload(await readJsonBody(req), user);
-      const result = await addDevice(body, getYmcsEnvForUser(user));
+      const result = await addDeviceWithOptionalSipBinding(body, getYmcsEnvForUser(user));
       cachedDevices = {
         expiresAt: 0,
         items: []
       };
-      sendJson(res, result.ok ? 200 : result.status || 502, result);
+      sendJson(res, result.ok || result.deviceCreated ? 200 : result.status || 502, result);
+    } catch (error) {
+      sendJson(res, 400, {
+        ok: false,
+        message: error instanceof Error ? error.message : "Unknown error",
+        payload: null
+      });
+    }
+    return;
+  }
+
+  if (req.method === "POST" && url.pathname === "/api/accounts") {
+    try {
+      const user = getAuthUser(req);
+      const body = applyUserSiteScopeToAccountPayload(await readJsonBody(req), user);
+      const result = await addSipAccount(body, getYmcsEnvForUser(user));
+      cachedAccounts = {
+        expiresAt: 0,
+        items: []
+      };
+      sendJson(res, result.ok ? 200 : result.status || 502, {
+        ...result,
+        message: result.ok ? buildSipAccountSuccessMessage(result) : result.message
+      });
     } catch (error) {
       sendJson(res, 400, {
         ok: false,
