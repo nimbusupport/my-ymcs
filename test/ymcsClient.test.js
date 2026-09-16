@@ -292,6 +292,33 @@ test("buildBindAccountsRequest targets YMCS device account binding endpoint", ()
   );
 
   assert.equal(request.url, "https://eu-api.ymcs.yealink.com/v2/dm/devices/device-1/bindAccounts");
+  assert.deepEqual(request.body, [{
+    lineId: 1,
+    accountType: 0,
+    accountId: "account-1"
+  }]);
+  assert.equal(request.headers.Authorization, "Bearer token-789");
+});
+
+test("buildBindAccountsRequest can still send wrapped account payloads", () => {
+  const request = buildBindAccountsRequest(
+    {
+      deviceId: "device-1",
+      accounts: [{
+        lineId: 1,
+        accountType: 0,
+        accountId: "account-1"
+      }]
+    },
+    sampleEnv,
+    {
+      accessToken: "token-789",
+      timestamp: 1730000000000,
+      nonce: "nonce-123",
+      wrappedBody: true
+    }
+  );
+
   assert.deepEqual(request.body, {
     accounts: [{
       lineId: 1,
@@ -299,11 +326,11 @@ test("buildBindAccountsRequest targets YMCS device account binding endpoint", ()
       accountId: "account-1"
     }]
   });
-  assert.equal(request.headers.Authorization, "Bearer token-789");
 });
 
 test("extractYmcsMessage prefers structured message fields", () => {
   assert.equal(extractYmcsMessage({ message: "bad request" }), "bad request");
   assert.equal(extractYmcsMessage({ errors: [{ message: "first failure" }] }), "first failure");
+  assert.equal(extractYmcsMessage({ errors: [{ field: "account-1", msg: "The resource does not exist or has been deleted" }] }), "The resource does not exist or has been deleted");
   assert.equal(extractYmcsMessage({ id: "abc123" }), "Device created successfully.");
 });

@@ -848,6 +848,90 @@ function buildSipAccountSuccessMessage(result) {
     : "SIP account created successfully.";
 }
 
+function buildSipAccountBatchMessage(result) {
+  const total = Number(result?.total ?? 0);
+  const successCount = Number(result?.successCount ?? 0);
+  const failureCount = Number(result?.failureCount ?? 0);
+  const errorDetails = Array.isArray(result?.errors)
+    ? result.errors
+      .map((entry) => {
+        const row = Number(entry?.index ?? -1) + 1;
+        const username = String(entry?.username ?? "").trim();
+        const message = String(entry?.message ?? "").trim();
+        const prefix = row > 0 ? `Row ${row}` : "Row";
+        const subject = username ? `${prefix} (${username})` : prefix;
+        return message ? `${subject}: ${message}` : subject;
+      })
+      .filter(Boolean)
+    : [];
+
+  if (total > 0 && failureCount === 0 && successCount === total) {
+    return `${successCount} SIP account${successCount === 1 ? "" : "s"} created successfully.`;
+  }
+
+  if (successCount > 0 || failureCount > 0) {
+    const summary = `${successCount} SIP account${successCount === 1 ? "" : "s"} created, ${failureCount} failed.`;
+    return errorDetails.length > 0 ? `${summary} YMCS: ${errorDetails.join(" | ")}` : summary;
+  }
+
+  return "SIP account request completed.";
+}
+
+async function addSipAccountsBatch(accounts, env) {
+  const items = Array.isArray(accounts) ? accounts : [];
+
+  if (items.length === 0) {
+    throw new Error("At least one SIP account is required.");
+  }
+
+  if (items.length > 100) {
+    throw new Error("You can add at most 100 SIP accounts at a time.");
+  }
+
+  const created = [];
+  const errors = [];
+  let lastStatus = 200;
+
+  for (let index = 0; index < items.length; index += 1) {
+    const input = items[index];
+    const result = await addSipAccount(input, env);
+
+    if (result.ok) {
+      created.push({
+        index,
+        payload: result.payload,
+        requestBody: result.requestBody
+      });
+      continue;
+    }
+
+    errors.push({
+      index,
+      username: String(input?.username ?? "").trim(),
+      message: result.message || "SIP account request failed."
+    });
+    lastStatus = result.status || lastStatus;
+  }
+
+  const summary = {
+    ok: errors.length === 0,
+    partial: created.length > 0 && errors.length > 0,
+    status: errors.length === 0 ? 200 : lastStatus || 502,
+    total: items.length,
+    successCount: created.length,
+    failureCount: errors.length,
+    created,
+    items: created.map((entry) => entry.payload),
+    errors,
+    requestBody: items
+  };
+
+  return {
+    ...summary,
+    message: buildSipAccountBatchMessage(summary)
+  };
+}
+
 function buildBindAccountsMessage(result) {
   const payload = result?.payload || {};
   const successCount = Number(payload.successCount ?? 0);
@@ -873,6 +957,78 @@ function buildBindAccountsMessage(result) {
   }
 
   return result?.message || "SIP account binding completed.";
+}
+
+function isBindAccountsSuccessful(result) {
+  if (!result?.ok) {
+    return false;
+  }
+
+  const payload = result?.payload || {};
+  const hasOperationCounts = ["total", "successCount", "failureCount"].some((key) => payload[key] != null);
+  if (!hasOperationCounts) {
+    return true;
+  }
+
+  const successCount = Number(payload.successCount ?? 0);
+  const failureCount = Number(payload.failureCount ?? 0);
+  const total = Number(payload.total ?? successCount + failureCount);
+
+  if (total > 0) {
+    return failureCount === 0 && successCount === total;
+  }
+
+  return failureCount === 0;
+}
+
+function shouldRetryBindAccounts(result) {
+  if (isBindAccountsSuccessful(result)) {
+    return false;
+  }
+
+  const status = Number(result?.status ?? 0);
+  if (status === 401 || status === 403) {
+    return false;
+  }
+
+  const message = String(result?.message ?? "").toLowerCase();
+  const payloadText = JSON.stringify(result?.payload ?? "").toLowerCase();
+  const combined = `${message} ${payloadText}`;
+
+  return (
+    status === 404
+    || status === 409
+    || status === 429
+    || status >= 500
+    || combined.includes("does not exist")
+    || combined.includes("has been deleted")
+    || combined.includes("not found")
+    || combined.includes("resource")
+  );
+}
+
+function wait(ms) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+async function bindAccountsToDeviceWithRetry(bindingInput, env) {
+  const delaysMs = [0, 700, 1400, 2200];
+  let lastResult = null;
+
+  for (let index = 0; index < delaysMs.length; index += 1) {
+    if (delaysMs[index] > 0) {
+      await wait(delaysMs[index]);
+    }
+
+    lastResult = await bindAccountsToDevice(bindingInput, env);
+    if (!shouldRetryBindAccounts(lastResult) || index === delaysMs.length - 1) {
+      return lastResult;
+    }
+  }
+
+  return lastResult;
 }
 
 async function addDeviceWithOptionalSipBinding(body, env) {
@@ -903,7 +1059,7 @@ async function addDeviceWithOptionalSipBinding(body, env) {
     };
   }
 
-  const bindResult = await bindAccountsToDevice({
+  const bindResult = await bindAccountsToDeviceWithRetry({
     deviceId,
     accounts: [{
       accountId,
@@ -912,7 +1068,7 @@ async function addDeviceWithOptionalSipBinding(body, env) {
     }]
   }, env);
 
-  if (bindResult.ok) {
+  if (isBindAccountsSuccessful(bindResult)) {
     return {
       ...result,
       message: `${result.message || "Device created successfully."} SIP account bound successfully.`,
@@ -1096,6 +1252,16 @@ function filterAccounts(items, query) {
 function applyUserSiteScopeToAccountPayload(body, user) {
   if (!user?.siteScope) {
     return body;
+  }
+
+  if (Array.isArray(body?.accounts)) {
+    return {
+      ...body,
+      accounts: body.accounts.map((account) => ({
+        ...account,
+        siteId: user.siteScope.siteId
+      }))
+    };
   }
 
   return {
@@ -1582,15 +1748,24 @@ async function handleRequest(req, res) {
     try {
       const user = getAuthUser(req);
       const body = applyUserSiteScopeToAccountPayload(await readJsonBody(req), user);
-      const result = await addSipAccount(body, getYmcsEnvForUser(user));
+      const isBatchRequest = Array.isArray(body?.accounts);
+      const result = isBatchRequest
+        ? await addSipAccountsBatch(body.accounts, getYmcsEnvForUser(user))
+        : await addSipAccount(body, getYmcsEnvForUser(user));
       cachedAccounts = {
         expiresAt: 0,
         items: []
       };
-      sendJson(res, result.ok ? 200 : result.status || 502, {
-        ...result,
-        message: result.ok ? buildSipAccountSuccessMessage(result) : result.message
-      });
+      sendJson(
+        res,
+        isBatchRequest ? 200 : (result.ok ? 200 : result.status || 502),
+        {
+          ...result,
+          message: isBatchRequest
+            ? result.message
+            : (result.ok ? buildSipAccountSuccessMessage(result) : result.message)
+        }
+      );
     } catch (error) {
       sendJson(res, 400, {
         ok: false,

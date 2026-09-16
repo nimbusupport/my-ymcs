@@ -495,9 +495,9 @@ export function validateBindAccountsInput(input = {}) {
 export function buildBindAccountsRequest(input = {}, env = process.env, options = {}) {
   const normalized = validateBindAccountsInput(input);
   const apiPath = `v2/dm/devices/${encodeURIComponent(normalized.deviceId)}/bindAccounts`;
-  const body = options.rawArrayBody === true
-    ? normalized.accounts
-    : { accounts: normalized.accounts };
+  const body = options.wrappedBody === true
+    ? { accounts: normalized.accounts }
+    : normalized.accounts;
   const request = buildAuthorizedRequest("POST", apiPath, env, {
     body,
     accessToken: options.accessToken,
@@ -545,6 +545,16 @@ export function extractYmcsMessage(payload) {
 
     if (first && typeof first.message === "string") {
       return first.message;
+    }
+
+    if (first && typeof first.msg === "string") {
+      return first.msg;
+    }
+
+    if (first && (typeof first.field === "string" || typeof first.msg === "string")) {
+      const field = typeof first.field === "string" ? first.field.trim() : "";
+      const msg = typeof first.msg === "string" ? first.msg.trim() : "";
+      return field && msg ? `${field}: ${msg}` : (msg || field);
     }
   }
 
@@ -816,8 +826,8 @@ export async function listAccounts(input = {}, env = process.env) {
 
 export async function bindAccountsToDevice(input = {}, env = process.env) {
   const accessToken = await getAccessToken(env);
-  const attempt = async (rawArrayBody) => {
-    const request = buildBindAccountsRequest(input, env, { accessToken, rawArrayBody });
+  const attempt = async (wrappedBody) => {
+    const request = buildBindAccountsRequest(input, env, { accessToken, wrappedBody });
     const response = await fetch(request.url, {
       method: "POST",
       headers: request.headers,
@@ -837,9 +847,13 @@ export async function bindAccountsToDevice(input = {}, env = process.env) {
     };
   };
 
-  const wrappedResult = await attempt(false);
-  if (wrappedResult.ok || wrappedResult.status !== 400) {
-    return wrappedResult;
+  const rawArrayResult = await attempt(false);
+  if (rawArrayResult.ok) {
+    return rawArrayResult;
+  }
+
+  if (rawArrayResult.status === 401 || rawArrayResult.status === 403) {
+    return rawArrayResult;
   }
 
   return attempt(true);

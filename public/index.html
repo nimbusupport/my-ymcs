@@ -782,61 +782,82 @@
           </p>
 
           <form id="sip-account-form" class="form sip-account-form" novalidate>
-            <div class="sip-account-grid">
+            <div id="sip-account-batch-controls" class="sip-account-batch-controls">
               <label class="field">
-                <span><em>*</em> Register Name</span>
-                <input id="sip-register-name" name="registerName" type="text" maxlength="128" placeholder="Please enter register name">
+                <span>Accounts to Add</span>
+                <select id="sip-account-count" name="sipAccountCount">
+                  <option value="1">1</option>
+                </select>
               </label>
-
-              <label class="field">
-                <span><em>*</em> Username</span>
-                <input id="sip-username" name="username" type="text" maxlength="128" placeholder="Please enter username">
-              </label>
-
-              <label class="field">
-                <span><em>*</em> Password</span>
-                <input id="sip-password" name="password" type="text" maxlength="128" placeholder="Please enter password">
-              </label>
-
-              <label class="field">
-                <span>Label</span>
-                <input id="sip-label" name="label" type="text" maxlength="128" placeholder="Optional label">
-              </label>
-
-              <label class="field">
-                <span>Display Name</span>
-                <input id="sip-display-name" name="displayName" type="text" maxlength="128" placeholder="Optional display name">
-              </label>
-
-              <div class="field">
-                <span>Site</span>
-                <div class="combo" id="sip-account-site-combo">
-                  <div class="combo-shell">
-                    <input id="sip-account-site-input" name="sipAccountSiteInput" type="text" placeholder="Select a site" autocomplete="off" aria-expanded="false">
-                    <input id="selected-sip-account-site-id" name="selectedSipAccountSiteId" type="hidden">
-                    <button id="sip-account-site-toggle" class="combo-toggle" type="button" aria-label="Toggle SIP account site list"></button>
-                  </div>
-                  <div id="sip-account-site-menu" class="combo-menu hidden" role="listbox"></div>
-                </div>
-                <small id="sip-account-site-note" class="field-note">Optional. You can assign this account to a YMCS site.</small>
-              </div>
-
-              <div class="field">
-                <span><em>*</em> Server Address 1</span>
-                <div class="sip-server-row">
-                  <input id="sip-server1-host" name="sipServer1Host" type="text" maxlength="256" placeholder="Please enter server address">
-                  <input id="sip-server1-port" name="sipServer1Port" type="number" min="0" max="65535" value="5060" placeholder="5060">
-                </div>
-              </div>
-
-              <div class="field">
-                <span>Server Address 2</span>
-                <div class="sip-server-row">
-                  <input id="sip-server2-host" name="sipServer2Host" type="text" maxlength="256" placeholder="Optional backup server address">
-                  <input id="sip-server2-port" name="sipServer2Port" type="number" min="0" max="65535" value="5060" placeholder="5060">
-                </div>
-              </div>
+              <p class="sip-account-batch-note">
+                Choose 1 to 100 SIP accounts. Extra accounts inherit the main account Site and Server Address 1 automatically.
+              </p>
             </div>
+
+            <section class="sip-account-section">
+              <div class="sip-account-section-head">
+                <h3>Main SIP Account</h3>
+                <p>This first SIP account controls the shared Site and Server Address 1 for any extra accounts below.</p>
+              </div>
+
+              <div class="sip-account-grid">
+                <label class="field">
+                  <span><em>*</em> Register Name</span>
+                  <input id="sip-register-name" name="registerName" type="text" maxlength="128" placeholder="Please enter register name">
+                </label>
+
+                <label class="field">
+                  <span><em>*</em> Username</span>
+                  <input id="sip-username" name="username" type="text" maxlength="128" placeholder="Please enter username">
+                </label>
+
+                <label class="field">
+                  <span><em>*</em> Password</span>
+                  <input id="sip-password" name="password" type="text" maxlength="128" placeholder="Please enter password">
+                </label>
+
+                <label class="field">
+                  <span>Label</span>
+                  <input id="sip-label" name="label" type="text" maxlength="128" placeholder="Optional label">
+                </label>
+
+                <label class="field">
+                  <span>Display Name</span>
+                  <input id="sip-display-name" name="displayName" type="text" maxlength="128" placeholder="Optional display name">
+                </label>
+
+                <div class="field">
+                  <span>Site</span>
+                  <div class="combo" id="sip-account-site-combo">
+                    <div class="combo-shell">
+                      <input id="sip-account-site-input" name="sipAccountSiteInput" type="text" placeholder="Select a site" autocomplete="off" aria-expanded="false">
+                      <input id="selected-sip-account-site-id" name="selectedSipAccountSiteId" type="hidden">
+                      <button id="sip-account-site-toggle" class="combo-toggle" type="button" aria-label="Toggle SIP account site list"></button>
+                    </div>
+                    <div id="sip-account-site-menu" class="combo-menu hidden" role="listbox"></div>
+                  </div>
+                  <small id="sip-account-site-note" class="field-note">Optional. You can assign this account to a YMCS site.</small>
+                </div>
+
+                <div class="field">
+                  <span><em>*</em> Server Address 1</span>
+                  <div class="sip-server-row">
+                    <input id="sip-server1-host" name="sipServer1Host" type="text" maxlength="256" placeholder="Please enter server address">
+                    <input id="sip-server1-port" name="sipServer1Port" type="number" min="0" max="65535" value="5060" placeholder="5060">
+                  </div>
+                </div>
+
+                <div class="field">
+                  <span>Server Address 2</span>
+                  <div class="sip-server-row">
+                    <input id="sip-server2-host" name="sipServer2Host" type="text" maxlength="256" placeholder="Optional backup server address">
+                    <input id="sip-server2-port" name="sipServer2Port" type="number" min="0" max="65535" value="5060" placeholder="5060">
+                  </div>
+                </div>
+              </div>
+            </section>
+
+            <div id="sip-account-extra-rows" class="sip-account-extra-rows"></div>
 
             <label class="field">
               <span>Description</span>

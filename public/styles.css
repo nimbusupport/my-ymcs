@@ -65,6 +65,7 @@ button {
   display: grid;
   place-items: center;
   padding: 24px;
+  overflow-y: auto;
   background: rgba(18, 34, 49, 0.46);
   backdrop-filter: blur(10px);
 }
@@ -123,10 +124,65 @@ button {
 
 .sip-account-modal-card {
   width: min(760px, 100%);
+  max-height: calc(100vh - 48px);
+}
+
+.sip-account-modal-card .modal-body {
+  max-height: calc(100vh - 60px);
+  overflow-y: auto;
 }
 
 .sip-account-form {
   gap: 18px;
+}
+
+.sip-account-batch-controls,
+.sip-account-section,
+.sip-account-extra-card {
+  display: grid;
+  gap: 16px;
+  padding: 18px;
+  border-radius: 18px;
+  border: 1px solid var(--line);
+  background: rgba(251, 253, 255, 0.95);
+}
+
+.sip-account-batch-controls {
+  gap: 10px;
+  background: linear-gradient(180deg, rgba(242, 252, 248, 0.94) 0%, rgba(251, 253, 255, 0.96) 100%);
+}
+
+.sip-account-batch-controls .field {
+  max-width: 220px;
+}
+
+.sip-account-batch-note,
+.sip-account-section-head p,
+.sip-account-extra-head p,
+.sip-account-inherit-note,
+.sip-account-inherit-value {
+  margin: 0;
+  color: #6f7f90;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.sip-account-section-head,
+.sip-account-extra-head {
+  display: grid;
+  gap: 6px;
+}
+
+.sip-account-section-head h3,
+.sip-account-extra-head h3 {
+  margin: 0;
+  font-size: 18px;
+  color: #203548;
+}
+
+.sip-account-extra-rows {
+  display: grid;
+  gap: 16px;
 }
 
 .sip-account-grid {
@@ -154,6 +210,30 @@ button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 110px;
   gap: 12px;
+}
+
+.sip-account-inherit-card {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px dashed rgba(32, 195, 161, 0.35);
+  background: rgba(238, 252, 247, 0.72);
+}
+
+.sip-account-inherit-values {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sip-account-inherit-value strong {
+  color: #1f6858;
+}
+
+.sip-account-extra-card textarea {
+  min-height: 108px;
 }
 
 .field textarea {
@@ -2309,6 +2389,10 @@ input[readonly] {
     grid-template-columns: 1fr;
   }
 
+  .sip-account-inherit-values {
+    grid-template-columns: 1fr;
+  }
+
   .device-account-row,
   .accounts-toolbar {
     display: grid;
@@ -2528,5 +2612,11 @@ input[readonly] {
 
   .hero-stat {
     min-width: 0;
+  }
+
+  .sip-account-batch-controls,
+  .sip-account-section,
+  .sip-account-extra-card {
+    padding: 16px;
   }
 }

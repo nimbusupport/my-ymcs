@@ -34,6 +34,9 @@ const sipAccountResponseBadge = document.querySelector("#sip-account-response-ba
 const sipAccountResponseMessage = document.querySelector("#sip-account-response-message");
 const sipBindOption = document.querySelector("#sip-bind-option");
 const sipBindAfterSaveCheckbox = document.querySelector("#sip-bind-after-save");
+const sipAccountBatchControls = document.querySelector("#sip-account-batch-controls");
+const sipAccountCountSelect = document.querySelector("#sip-account-count");
+const sipAccountExtraRows = document.querySelector("#sip-account-extra-rows");
 
 const authLoading = document.querySelector("#auth-loading");
 const loginShell = document.querySelector("#login-shell");
@@ -166,7 +169,10 @@ const selectedSipAccountSiteIdInput = document.querySelector("#selected-sip-acco
 const sipAccountSiteMenu = document.querySelector("#sip-account-site-menu");
 const sipAccountSiteToggle = document.querySelector("#sip-account-site-toggle");
 const sipAccountSiteNote = document.querySelector("#sip-account-site-note");
+const sipServer1HostInput = document.querySelector("#sip-server1-host");
+const sipServer1PortInput = document.querySelector("#sip-server1-port");
 const MAX_BATCH_ROWS = 100;
+const MAX_SIP_ACCOUNT_ROWS = 100;
 
 let modelItems = [];
 let siteItems = [];
@@ -300,11 +306,7 @@ function closeSipAccountModal(options = {}) {
   syncModalOpenState();
 
   if (options.resetForm !== false) {
-    sipAccountForm?.reset();
-    if (selectedSipAccountSiteIdInput) {
-      selectedSipAccountSiteIdInput.value = "";
-    }
-    resetResponseState(sipAccountResponsePanel, sipAccountResponseMessage);
+    resetSipAccountForm();
   }
 
   const previousFocus = sipAccountModalPreviousFocus;
@@ -1479,11 +1481,202 @@ function findSiteItemById(siteId) {
   return siteItems.find((item) => item.siteId === normalizedId) || null;
 }
 
+function normalizeSipAccountCount(value) {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return 1;
+  }
+
+  return Math.max(1, Math.min(MAX_SIP_ACCOUNT_ROWS, Math.trunc(numericValue)));
+}
+
+function initializeSipAccountCountOptions() {
+  if (!sipAccountCountSelect) {
+    return;
+  }
+
+  sipAccountCountSelect.innerHTML = "";
+
+  for (let index = 1; index <= MAX_SIP_ACCOUNT_ROWS; index += 1) {
+    const option = document.createElement("option");
+    option.value = String(index);
+    option.textContent = String(index);
+    sipAccountCountSelect.append(option);
+  }
+
+  sipAccountCountSelect.value = "1";
+}
+
+function getSipAccountInheritedSiteLabel() {
+  const siteId = selectedSipAccountSiteIdInput.value.trim();
+  const selectedSite = findSiteItemById(siteId);
+  const typedValue = sipAccountSiteInput.value.trim();
+
+  if (selectedSite) {
+    return selectedSite.parentName
+      ? `${selectedSite.name} - ${selectedSite.parentName}`
+      : selectedSite.name;
+  }
+
+  return typedValue || "Uses the main SIP account site.";
+}
+
+function getSipAccountInheritedServer1Label() {
+  const host = sipServer1HostInput?.value.trim() || "";
+  const port = sipServer1PortInput?.value.trim() || "5060";
+
+  if (!host) {
+    return "Uses the main SIP account server address.";
+  }
+
+  return `${host}:${port || "5060"}`;
+}
+
+function captureSipAccountExtraRowValues() {
+  if (!sipAccountExtraRows) {
+    return [];
+  }
+
+  return Array.from(sipAccountExtraRows.querySelectorAll(".sip-account-extra-card")).map((row) => ({
+    registerName: row.querySelector('[data-field="registerName"]')?.value.trim() || "",
+    username: row.querySelector('[data-field="username"]')?.value.trim() || "",
+    password: row.querySelector('[data-field="password"]')?.value.trim() || "",
+    label: row.querySelector('[data-field="label"]')?.value.trim() || "",
+    displayName: row.querySelector('[data-field="displayName"]')?.value.trim() || "",
+    sipServer2Host: row.querySelector('[data-field="sipServer2Host"]')?.value.trim() || "",
+    sipServer2Port: row.querySelector('[data-field="sipServer2Port"]')?.value.trim() || "5060",
+    remark: row.querySelector('[data-field="remark"]')?.value.trim() || ""
+  }));
+}
+
+function createSipAccountExtraRowMarkup(index, values = {}) {
+  const cardNumber = index + 2;
+  const inheritedSite = escapeHtml(getSipAccountInheritedSiteLabel());
+  const inheritedServer1 = escapeHtml(getSipAccountInheritedServer1Label());
+  const registerName = escapeHtml(values.registerName || "");
+  const username = escapeHtml(values.username || "");
+  const password = escapeHtml(values.password || "");
+  const label = escapeHtml(values.label || "");
+  const displayName = escapeHtml(values.displayName || "");
+  const sipServer2Host = escapeHtml(values.sipServer2Host || "");
+  const sipServer2Port = escapeHtml(values.sipServer2Port || "5060");
+  const remark = escapeHtml(values.remark || "");
+
+  return `
+    <section class="sip-account-extra-card" data-extra-index="${index}">
+      <div class="sip-account-extra-head">
+        <h3>SIP Account ${cardNumber}</h3>
+        <p>Register only the fields that should be different for this SIP account. Site and Server Address 1 stay synced from the main account above.</p>
+      </div>
+
+      <div class="sip-account-grid">
+        <div class="sip-account-inherit-card">
+          <div class="sip-account-inherit-values">
+            <p class="sip-account-inherit-value"><strong>Site:</strong> <span data-inherit="site">${inheritedSite}</span></p>
+            <p class="sip-account-inherit-value"><strong>Server Address 1:</strong> <span data-inherit="server1">${inheritedServer1}</span></p>
+          </div>
+          <p class="sip-account-inherit-note">These shared values update automatically when you change the main SIP account.</p>
+        </div>
+
+        <label class="field">
+          <span><em>*</em> Register Name</span>
+          <input data-field="registerName" type="text" maxlength="128" placeholder="Please enter register name" value="${registerName}">
+        </label>
+
+        <label class="field">
+          <span><em>*</em> Username</span>
+          <input data-field="username" type="text" maxlength="128" placeholder="Please enter username" value="${username}">
+        </label>
+
+        <label class="field">
+          <span><em>*</em> Password</span>
+          <input data-field="password" type="text" maxlength="128" placeholder="Please enter password" value="${password}">
+        </label>
+
+        <label class="field">
+          <span>Label</span>
+          <input data-field="label" type="text" maxlength="128" placeholder="Optional label" value="${label}">
+        </label>
+
+        <label class="field">
+          <span>Display Name</span>
+          <input data-field="displayName" type="text" maxlength="128" placeholder="Optional display name" value="${displayName}">
+        </label>
+
+        <div class="field">
+          <span>Server Address 2</span>
+          <div class="sip-server-row">
+            <input data-field="sipServer2Host" type="text" maxlength="256" placeholder="Optional backup server address" value="${sipServer2Host}">
+            <input data-field="sipServer2Port" type="number" min="0" max="65535" placeholder="5060" value="${sipServer2Port}">
+          </div>
+        </div>
+      </div>
+
+      <label class="field">
+        <span>Description</span>
+        <textarea data-field="remark" rows="3" maxlength="512" placeholder="Optional description">${remark}</textarea>
+      </label>
+    </section>
+  `;
+}
+
+function updateSipAccountExtraInheritancePreview() {
+  if (!sipAccountExtraRows) {
+    return;
+  }
+
+  const siteLabel = getSipAccountInheritedSiteLabel();
+  const server1Label = getSipAccountInheritedServer1Label();
+
+  sipAccountExtraRows.querySelectorAll('[data-inherit="site"]').forEach((element) => {
+    element.textContent = siteLabel;
+  });
+
+  sipAccountExtraRows.querySelectorAll('[data-inherit="server1"]').forEach((element) => {
+    element.textContent = server1Label;
+  });
+}
+
+function renderSipAccountExtraRows(count = normalizeSipAccountCount(sipAccountCountSelect?.value)) {
+  if (!sipAccountExtraRows) {
+    return;
+  }
+
+  const normalizedCount = normalizeSipAccountCount(count);
+  const existingValues = captureSipAccountExtraRowValues();
+  const extraCount = Math.max(0, normalizedCount - 1);
+
+  if (extraCount === 0) {
+    sipAccountExtraRows.innerHTML = "";
+    return;
+  }
+
+  sipAccountExtraRows.innerHTML = Array.from({ length: extraCount }, (_, index) => (
+    createSipAccountExtraRowMarkup(index, existingValues[index])
+  )).join("");
+}
+
+function setSipAccountBatchCount(count = 1) {
+  const normalizedCount = normalizeSipAccountCount(count);
+
+  if (sipAccountCountSelect) {
+    sipAccountCountSelect.value = String(normalizedCount);
+  }
+
+  renderSipAccountExtraRows(normalizedCount);
+  updateSipAccountExtraInheritancePreview();
+  if (sipAccountModalContext.source === "accounts") {
+    sipAccountSaveButton.textContent = normalizedCount > 1 ? "Save SIP Accounts" : "Save SIP Account";
+  }
+}
+
 function setSipAccountSiteSelection(siteId = "") {
   const normalizedId = String(siteId || "").trim();
   const matched = findSiteItemById(normalizedId);
   selectedSipAccountSiteIdInput.value = normalizedId;
   sipAccountSiteInput.value = matched ? matched.name : normalizedId;
+  updateSipAccountExtraInheritancePreview();
 }
 
 function setSelectedDeviceAccount(item = null) {
@@ -1513,6 +1706,8 @@ function resetSipAccountForm() {
   selectedSipAccountSiteIdInput.value = "";
   sipAccountSiteInput.value = "";
   sipAccountSiteActiveIndex = -1;
+  setSipAccountBatchCount(1);
+  updateSipAccountExtraInheritancePreview();
 }
 
 function openSipAccountModal(context = {}) {
@@ -1530,12 +1725,18 @@ function openSipAccountModal(context = {}) {
   }
 
   const bindOptionVisible = context.source === "device";
+  const batchModeVisible = context.source !== "device";
+  sipAccountBatchControls?.classList.toggle("hidden", !batchModeVisible);
   sipBindOption.classList.toggle("hidden", !bindOptionVisible);
   sipBindAfterSaveCheckbox.checked = bindOptionVisible;
+  setSipAccountBatchCount(batchModeVisible ? normalizeSipAccountCount(sipAccountCountSelect?.value) : 1);
+  sipAccountSaveButton.textContent = batchModeVisible && normalizeSipAccountCount(sipAccountCountSelect?.value) > 1
+    ? "Save SIP Accounts"
+    : "Save SIP Account";
   sipAccountModalTitle.textContent = bindOptionVisible ? "Add SIP Account For Device" : "Add SIP Account";
   sipAccountModalMessage.textContent = bindOptionVisible
     ? "Create a SIP account in YMCS. If you keep binding enabled, it will be attached to the device after you save that device."
-    : "Create a SIP account directly in YMCS and keep it ready for later device binding.";
+    : "Create one or many SIP accounts directly in YMCS. Extra rows inherit Site and Server Address 1 from the main SIP account.";
   sipAccountModal.classList.remove("hidden");
   sipAccountModal.setAttribute("aria-hidden", "false");
   syncModalOpenState();
@@ -1571,6 +1772,29 @@ function buildSipAccountPayload() {
       port: sipAccountForm.elements.sipServer2Port.value.trim()
     }
   };
+}
+
+function buildSipAccountPayloads() {
+  const mainPayload = buildSipAccountPayload();
+  const extraPayloads = Array.from(sipAccountExtraRows?.querySelectorAll(".sip-account-extra-card") || []).map((row) => ({
+    registerName: row.querySelector('[data-field="registerName"]')?.value.trim() || "",
+    username: row.querySelector('[data-field="username"]')?.value.trim() || "",
+    password: row.querySelector('[data-field="password"]')?.value.trim() || "",
+    label: row.querySelector('[data-field="label"]')?.value.trim() || "",
+    displayName: row.querySelector('[data-field="displayName"]')?.value.trim() || "",
+    remark: row.querySelector('[data-field="remark"]')?.value.trim() || "",
+    siteId: mainPayload.siteId,
+    sipServer1: {
+      host: mainPayload.sipServer1.host,
+      port: mainPayload.sipServer1.port
+    },
+    sipServer2: {
+      host: row.querySelector('[data-field="sipServer2Host"]')?.value.trim() || "",
+      port: row.querySelector('[data-field="sipServer2Port"]')?.value.trim() || "5060"
+    }
+  }));
+
+  return [mainPayload, ...extraPayloads];
 }
 
 function normalizeCreatedAccount(payload, requestBody) {
@@ -3074,6 +3298,11 @@ accountsRefreshButton.addEventListener("click", async () => {
   }
 });
 
+sipAccountCountSelect?.addEventListener("change", () => {
+  setSipAccountBatchCount(sipAccountCountSelect.value);
+  resetResponseState(sipAccountResponsePanel, sipAccountResponseMessage);
+});
+
 sipAccountSiteToggle.addEventListener("click", async () => {
   if (isLockedSiteUser()) {
     return;
@@ -3182,8 +3411,17 @@ sipAccountSiteInput.addEventListener("input", async () => {
   }
 
   selectedSipAccountSiteIdInput.value = "";
+  updateSipAccountExtraInheritancePreview();
   await loadSites(sipAccountSiteInput.value.trim());
   showMenu(sipAccountSiteMenu, sipAccountSiteInput);
+});
+
+sipServer1HostInput?.addEventListener("input", () => {
+  updateSipAccountExtraInheritancePreview();
+});
+
+sipServer1PortInput?.addEventListener("input", () => {
+  updateSipAccountExtraInheritancePreview();
 });
 
 modelInput.addEventListener("keydown", (event) => {
@@ -3363,28 +3601,54 @@ sipAccountForm.addEventListener("submit", async (event) => {
   sipAccountSaveButton.textContent = "Saving...";
 
   try {
+    const sipAccountPayloads = buildSipAccountPayloads();
+    const requestBody = sipAccountPayloads.length === 1
+      ? sipAccountPayloads[0]
+      : { accounts: sipAccountPayloads };
     const response = await apiFetch("/api/accounts", {
       method: "POST",
       headers: {
         "Content-Type": "application/json"
       },
-      body: JSON.stringify(buildSipAccountPayload())
+      body: JSON.stringify(requestBody)
     });
     const data = await response.json();
 
-    if (!response.ok || !data.ok) {
+    if (!response.ok) {
       throw new Error(data.message || "SIP account request failed.");
     }
 
-    const createdAccount = normalizeCreatedAccount(data.payload, data.requestBody);
-    if (createdAccount.id) {
-      mergeAccountItem(createdAccount);
+    const createdEntries = Array.isArray(data.created)
+      ? data.created
+      : data.payload
+        ? [{ payload: data.payload, requestBody: data.requestBody }]
+        : [];
+    const createdAccounts = createdEntries
+      .map((entry) => normalizeCreatedAccount(entry.payload, entry.requestBody))
+      .filter((item) => item.id || item.username);
+
+    if (createdAccounts.length > 1 || sipAccountPayloads.length > 1) {
+      await loadAccounts("", { forceReload: true });
+    } else if (createdAccounts[0]?.id) {
+      mergeAccountItem(createdAccounts[0]);
     } else {
       await loadAccounts("", { forceReload: true });
     }
 
+    if (!data.ok) {
+      setResponseState(
+        sipAccountResponsePanel,
+        sipAccountResponseBadge,
+        sipAccountResponseMessage,
+        false,
+        data.message || "SIP account request failed."
+      );
+      return;
+    }
+
     if (sipAccountModalContext.source === "device") {
-      if (sipBindAfterSaveCheckbox.checked && createdAccount.id) {
+      const createdAccount = createdAccounts[0] || null;
+      if (sipBindAfterSaveCheckbox.checked && createdAccount?.id) {
         setSelectedDeviceAccount(createdAccount);
       }
 
@@ -3412,7 +3676,9 @@ sipAccountForm.addEventListener("submit", async (event) => {
     );
   } finally {
     sipAccountSaveButton.disabled = false;
-    sipAccountSaveButton.textContent = "Save SIP Account";
+    sipAccountSaveButton.textContent = sipAccountModalContext.source === "accounts" && normalizeSipAccountCount(sipAccountCountSelect?.value) > 1
+      ? "Save SIP Accounts"
+      : "Save SIP Account";
   }
 });
 
@@ -3774,4 +4040,6 @@ bindClearableInput(accountsSearchInput, accountsSearchClearButton, () => {
   applyAccountsFilter();
 });
 
+initializeSipAccountCountOptions();
+setSipAccountBatchCount(1);
 bootstrapSession();
