@@ -63,6 +63,13 @@ const selectedBatchSiteIdInput = document.querySelector("#selected-batch-site-id
 const batchSiteMenu = document.querySelector("#batch-site-menu");
 const batchSiteToggle = document.querySelector("#batch-site-toggle");
 const batchSiteNote = document.querySelector("#batch-site-note");
+const batchModelAutoInput = document.querySelector("#batch-model-auto-input");
+const selectedBatchModelAutoIdInput = document.querySelector("#selected-batch-model-auto-id");
+const batchModelAutoMenu = document.querySelector("#batch-model-auto-menu");
+const batchModelAutoToggle = document.querySelector("#batch-model-auto-toggle");
+const batchRowCountInput = document.querySelector("#batch-row-count");
+const batchAddManyButton = document.querySelector("#batch-add-many");
+const batchClearButton = document.querySelector("#batch-clear-button");
 
 const searchForm = document.querySelector("#search-form");
 const searchInput = document.querySelector("#search-input");
@@ -127,6 +134,7 @@ const configW70bRows = document.querySelector("#config-w70b-rows");
 const modelCount = document.querySelector("#model-count");
 const siteCount = document.querySelector("#site-count");
 const deviceSiteNote = document.querySelector("#device-site-note");
+const MAX_BATCH_ROWS = 100;
 
 let modelItems = [];
 let siteItems = [];
@@ -135,10 +143,16 @@ let filteredSiteItems = [];
 let modelActiveIndex = -1;
 let siteActiveIndex = -1;
 let batchSiteActiveIndex = -1;
+let batchModelAutoActiveIndex = -1;
 let batchRowSequence = 0;
 let searchResultItems = [];
 let activeStatusFilter = "all";
 let appInitialized = false;
+let batchAutoModelSelection = {
+  displayValue: "",
+  modelId: "",
+  canonical: ""
+};
 let currentUser = null;
 let currentView = "device";
 let searchRefreshTimer = null;
@@ -1212,11 +1226,9 @@ function renderSites(menu, input, hiddenInput, stateSetter) {
     menu,
     filteredSiteItems.map((item) => ({
       ...item,
-      label: currentUser?.siteScope?.hideSiteId
-        ? item.name
-        : item.parentName
-          ? `${item.name} (${item.siteId}) - ${item.parentName}`
-          : `${item.name} (${item.siteId})`
+      label: item.parentName
+        ? `${item.name} - ${item.parentName}`
+        : item.name
     })),
     "No matching site. Keep typing or clear the search.",
     (item) => {
@@ -1325,6 +1337,37 @@ function resolveBatchModelValue(value) {
   return String(value || "").trim();
 }
 
+function buildBatchModelSelection(displayValue = "", modelIdValue = "") {
+  const typedValue = String(displayValue || "").trim();
+  const hiddenValue = String(modelIdValue || "").trim();
+  const resolvedValue = hiddenValue || (typedValue ? resolveBatchModelValue(typedValue) : "");
+  const nextDisplayValue = typedValue || getModelDisplayValue(resolvedValue);
+  return {
+    displayValue: nextDisplayValue,
+    modelId: resolvedValue,
+    canonical: normalizeCatalogText(resolvedValue || nextDisplayValue)
+  };
+}
+
+function getBatchAutoModelSelection() {
+  return buildBatchModelSelection(
+    batchModelAutoInput?.value,
+    selectedBatchModelAutoIdInput?.value
+  );
+}
+
+function setBatchAutoModelSelection(selection = {}) {
+  const nextSelection = buildBatchModelSelection(selection.displayValue, selection.modelId);
+  batchAutoModelSelection = nextSelection;
+  if (batchModelAutoInput) {
+    batchModelAutoInput.value = nextSelection.displayValue;
+  }
+  if (selectedBatchModelAutoIdInput) {
+    selectedBatchModelAutoIdInput.value = nextSelection.modelId;
+  }
+  return nextSelection;
+}
+
 function buildSuccessMessage(payload) {
   const model = modelInput.value.trim() || payload?.requestBody?.modelId || "Unknown model";
   const mac = payload?.payload?.mac || payload?.requestBody?.mac || deviceForm.elements.mac.value.trim();
@@ -1343,6 +1386,41 @@ function getBatchRowInputs(row) {
     model: row.querySelector("[data-batch-model-input]"),
     modelId: row.querySelector("[name='modelId']")
   };
+}
+
+function getBatchRowCount() {
+  return batchRows.querySelectorAll(".batch-row").length;
+}
+
+function isSingleEmptyBatchRow() {
+  const rows = Array.from(batchRows.querySelectorAll(".batch-row"));
+  return rows.length === 1 && !hasBatchRowContent(rows[0]);
+}
+
+function getBatchRowModelSelection(row) {
+  const inputs = getBatchRowInputs(row);
+  return buildBatchModelSelection(inputs.model?.value, inputs.modelId?.value);
+}
+
+function applyModelSelectionToBatchRow(row, selection) {
+  if (!row) {
+    return;
+  }
+
+  const nextSelection = buildBatchModelSelection(selection.displayValue, selection.modelId);
+  if (!nextSelection.displayValue && !nextSelection.modelId) {
+    return;
+  }
+
+  const inputs = getBatchRowInputs(row);
+  if (inputs.model) {
+    inputs.model.value = nextSelection.displayValue;
+  }
+  if (inputs.modelId) {
+    inputs.modelId.value = nextSelection.modelId;
+  }
+  hideBatchModelMenu(row);
+  syncBatchRowValidation(row);
 }
 
 function hasBatchRowContent(row) {
@@ -1425,6 +1503,103 @@ function validateBatchRows() {
   };
 }
 
+function syncBatchAutoModelToRows(previousSelection = batchAutoModelSelection, nextSelection = getBatchAutoModelSelection()) {
+  if (!nextSelection.canonical) {
+    batchAutoModelSelection = nextSelection;
+    return;
+  }
+
+  batchRows.querySelectorAll(".batch-row").forEach((row) => {
+    const currentSelection = getBatchRowModelSelection(row);
+    const shouldSync = !currentSelection.canonical
+      || (previousSelection.canonical && currentSelection.canonical === previousSelection.canonical);
+
+    if (shouldSync) {
+      applyModelSelectionToBatchRow(row, nextSelection);
+    }
+  });
+
+  batchAutoModelSelection = nextSelection;
+  updateBatchReadyCount();
+}
+
+function clampBatchRowRequest(value) {
+  const parsed = Number.parseInt(String(value || ""), 10);
+  if (!Number.isFinite(parsed)) {
+    return 1;
+  }
+
+  return Math.min(Math.max(parsed, 1), MAX_BATCH_ROWS);
+}
+
+function syncBatchRowCountInput() {
+  if (!batchRowCountInput) {
+    return 1;
+  }
+
+  const nextValue = clampBatchRowRequest(batchRowCountInput.value);
+  batchRowCountInput.value = String(nextValue);
+  return nextValue;
+}
+
+function addBatchRows(count, options = {}) {
+  let rowsToAdd = clampBatchRowRequest(count);
+  const reuseBlankRow = options.reuseBlankRow !== false;
+  const createdRows = [];
+
+  if (reuseBlankRow && rowsToAdd > 0 && isSingleEmptyBatchRow()) {
+    const firstRow = batchRows.querySelector(".batch-row");
+    if (firstRow && batchAutoModelSelection.canonical && !getBatchRowModelSelection(firstRow).canonical) {
+      applyModelSelectionToBatchRow(firstRow, batchAutoModelSelection);
+    }
+    rowsToAdd -= 1;
+  }
+
+  const remainingCapacity = Math.max(MAX_BATCH_ROWS - getBatchRowCount(), 0);
+  const rowsWithinLimit = Math.min(rowsToAdd, remainingCapacity);
+
+  for (let index = 0; index < rowsWithinLimit; index += 1) {
+    const row = createBatchRow();
+    batchRows.append(row);
+    createdRows.push(row);
+  }
+
+  updateBatchReadyCount();
+  return {
+    createdRows,
+    rowsAdded: rowsWithinLimit,
+    limitReached: rowsWithinLimit < rowsToAdd
+  };
+}
+
+function focusBatchInput(input) {
+  if (!input) {
+    return;
+  }
+
+  input.focus();
+  if (typeof input.select === "function") {
+    input.select();
+  }
+}
+
+function focusNextBatchMacInput(row) {
+  const rows = Array.from(batchRows.querySelectorAll(".batch-row"));
+  const currentIndex = rows.indexOf(row);
+  if (currentIndex === -1) {
+    return;
+  }
+
+  let nextRow = rows[currentIndex + 1];
+  if (!nextRow) {
+    const { createdRows } = addBatchRows(1, { reuseBlankRow: false });
+    nextRow = createdRows[0] || null;
+  }
+
+  const nextMacInput = nextRow?.querySelector("[name='mac']");
+  focusBatchInput(nextMacInput);
+}
+
 function rebuildBatchRows(items = [], options = {}) {
   const highlightIndexes = new Set(Array.isArray(options.highlightIndexes) ? options.highlightIndexes : []);
   batchRows.innerHTML = "";
@@ -1473,6 +1648,7 @@ function createBatchRow(initialValues = {}) {
   const row = document.createElement("div");
   row.className = "batch-row";
   row.dataset.rowId = String(batchRowSequence);
+  const initialModelValue = initialValues.modelInput || initialValues.modelId || "";
 
   row.innerHTML = `
     <div class="batch-row-grid">
@@ -1488,9 +1664,9 @@ function createBatchRow(initialValues = {}) {
             placeholder="Type model name or modelId"
             autocomplete="off"
             aria-expanded="false"
-            value="${escapeHtml(getModelDisplayValue(initialValues.modelId || ""))}"
+            value="${escapeHtml(getModelDisplayValue(initialModelValue))}"
           >
-          <input type="hidden" name="modelId" value="${escapeHtml(findModelOption(initialValues.modelId || ""))}">
+          <input type="hidden" name="modelId" value="${escapeHtml(findModelOption(initialModelValue))}">
           <button type="button" class="combo-toggle" data-batch-model-toggle aria-label="Toggle model list"></button>
         </div>
         <div class="combo-menu hidden" data-batch-model-menu role="listbox"></div>
@@ -1520,6 +1696,10 @@ function createBatchRow(initialValues = {}) {
     }
     updateBatchReadyCount();
   });
+
+  if (!initialModelValue && batchAutoModelSelection.canonical) {
+    applyModelSelectionToBatchRow(row, batchAutoModelSelection);
+  }
 
   syncBatchRowValidation(row);
   return row;
@@ -1554,7 +1734,13 @@ function rerenderBatchRows() {
 
 function resetBatchForm(options = {}) {
   const preserveSiteSelection = options.preserveSiteSelection === true;
+  const preserveAutoModel = options.preserveAutoModel === true;
   const keepResponseMessage = options.keepResponseMessage === true;
+  if (!preserveAutoModel) {
+    hideMenu(batchModelAutoMenu, batchModelAutoInput);
+    batchModelAutoActiveIndex = -1;
+    setBatchAutoModelSelection();
+  }
   batchRows.innerHTML = "";
   batchRows.append(createBatchRow());
   if (isLockedSiteUser()) {
@@ -1563,6 +1749,7 @@ function resetBatchForm(options = {}) {
     batchSiteInput.value = "";
     selectedBatchSiteIdInput.value = "";
   }
+  syncBatchRowCountInput();
   if (!keepResponseMessage) {
     resetResponseState(batchResponsePanel, batchResponseMessage);
   }
@@ -1606,6 +1793,41 @@ function renderBatchModelMenu(row, query = "") {
   const nextActiveIndex = normalizeCatalogText(query) && items.length > 0 ? 0 : -1;
   row.dataset.modelActiveIndex = String(nextActiveIndex);
   setActiveOption(menu, nextActiveIndex);
+}
+
+function commitBatchAutoModelSelection(options = {}) {
+  const previousSelection = batchAutoModelSelection;
+  const nextSelection = setBatchAutoModelSelection(getBatchAutoModelSelection());
+
+  if (options.applyToExisting !== false) {
+    syncBatchAutoModelToRows(previousSelection, nextSelection);
+    return nextSelection;
+  }
+
+  return nextSelection;
+}
+
+function renderBatchModelAutoMenu(query = "") {
+  if (!batchModelAutoInput || !selectedBatchModelAutoIdInput || !batchModelAutoMenu) {
+    return;
+  }
+
+  const items = getFilteredModelCatalogItems(query);
+  renderComboMenu(
+    batchModelAutoMenu,
+    items.map((item) => ({ ...item, label: item.shortType })),
+    "No matching model. You can still paste a raw modelId.",
+    (item) => {
+      batchModelAutoInput.value = item.shortType;
+      selectedBatchModelAutoIdInput.value = item.modelId || "";
+      hideMenu(batchModelAutoMenu, batchModelAutoInput);
+      batchModelAutoActiveIndex = -1;
+      commitBatchAutoModelSelection();
+    }
+  );
+
+  batchModelAutoActiveIndex = normalizeCatalogText(query) && items.length > 0 ? 0 : -1;
+  setActiveOption(batchModelAutoMenu, batchModelAutoActiveIndex);
 }
 
 function bindBatchModelCombo(row) {
@@ -1877,6 +2099,9 @@ function renderSearchResults(items) {
   items.forEach((item) => {
     const row = document.createElement("div");
     row.className = "search-row";
+    const siteDisplayValue = item.parentName
+      ? `${item.siteName || "-"} - ${item.parentName}`
+      : (item.siteName || "-");
     const searchServerLabel = item.searchServerLabel || "-";
     const searchServerPortalUrl = getSearchServerPortalUrl(searchServerLabel);
     const ipValues = [item.wanIp, item.lanIp].filter(Boolean);
@@ -1933,7 +2158,7 @@ function renderSearchResults(items) {
       </span>
       <span class="search-cell">
         <small class="search-cell-label">Site</small>
-        <span class="search-cell-value">${escapeHtml(item.siteName || "-")}</span>
+        <span class="search-cell-value">${escapeHtml(siteDisplayValue)}</span>
       </span>
       <span class="search-cell">
         <small class="search-cell-label">Server</small>
@@ -2407,6 +2632,18 @@ batchSiteToggle.addEventListener("click", async () => {
   batchSiteActiveIndex = -1;
 });
 
+batchModelAutoToggle.addEventListener("click", async () => {
+  if (batchModelAutoMenu.classList.contains("hidden")) {
+    await loadModels(batchModelAutoInput.value.trim());
+    renderBatchModelAutoMenu(batchModelAutoInput.value.trim());
+    showMenu(batchModelAutoMenu, batchModelAutoInput);
+    return;
+  }
+
+  hideMenu(batchModelAutoMenu, batchModelAutoInput);
+  batchModelAutoActiveIndex = -1;
+});
+
 modelInput.addEventListener("focus", async () => {
   await loadModels(modelInput.value.trim());
   showMenu(modelMenu, modelInput);
@@ -2454,6 +2691,19 @@ batchSiteInput.addEventListener("input", async () => {
   selectedBatchSiteIdInput.value = "";
   await loadSites(batchSiteInput.value.trim());
   showMenu(batchSiteMenu, batchSiteInput);
+});
+
+batchModelAutoInput.addEventListener("focus", async () => {
+  await loadModels(batchModelAutoInput.value.trim());
+  renderBatchModelAutoMenu(batchModelAutoInput.value.trim());
+  showMenu(batchModelAutoMenu, batchModelAutoInput);
+});
+
+batchModelAutoInput.addEventListener("input", async () => {
+  selectedBatchModelAutoIdInput.value = "";
+  await loadModels(batchModelAutoInput.value.trim());
+  renderBatchModelAutoMenu(batchModelAutoInput.value.trim());
+  showMenu(batchModelAutoMenu, batchModelAutoInput);
 });
 
 modelInput.addEventListener("keydown", (event) => {
@@ -2506,6 +2756,34 @@ batchSiteInput.addEventListener("keydown", (event) => {
   setActiveOption(batchSiteMenu, batchSiteActiveIndex);
 });
 
+batchModelAutoInput.addEventListener("keydown", (event) => {
+  const nextIndex = handleComboKeys(event, batchModelAutoMenu, {
+    activeIndex: batchModelAutoActiveIndex,
+    input: batchModelAutoInput
+  });
+
+  if (nextIndex !== null) {
+    batchModelAutoActiveIndex = nextIndex;
+    setActiveOption(batchModelAutoMenu, batchModelAutoActiveIndex);
+    return;
+  }
+
+  if (event.key === "Enter") {
+    event.preventDefault();
+    hideMenu(batchModelAutoMenu, batchModelAutoInput);
+    batchModelAutoActiveIndex = -1;
+    commitBatchAutoModelSelection();
+  }
+});
+
+batchModelAutoInput.addEventListener("change", () => {
+  commitBatchAutoModelSelection();
+});
+
+batchRowCountInput.addEventListener("input", () => {
+  syncBatchRowCountInput();
+});
+
 document.addEventListener("click", (event) => {
   if (!event.target.closest("#model-combo")) {
     hideMenu(modelMenu, modelInput);
@@ -2520,6 +2798,11 @@ document.addEventListener("click", (event) => {
   if (!event.target.closest("#batch-site-combo")) {
     hideMenu(batchSiteMenu, batchSiteInput);
     batchSiteActiveIndex = -1;
+  }
+
+  if (!event.target.closest("#batch-model-auto-combo")) {
+    hideMenu(batchModelAutoMenu, batchModelAutoInput);
+    batchModelAutoActiveIndex = -1;
   }
 
   batchRows.querySelectorAll(".batch-row").forEach((row) => {
@@ -2580,12 +2863,68 @@ deviceForm.addEventListener("submit", async (event) => {
 });
 
 batchAddRowButton.addEventListener("click", () => {
-  batchRows.append(createBatchRow());
-  updateBatchReadyCount();
+  const { limitReached } = addBatchRows(1, { reuseBlankRow: false });
+  if (limitReached) {
+    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, `You can add up to ${MAX_BATCH_ROWS} batch rows at one time.`);
+  }
+});
+
+batchAddManyButton.addEventListener("click", () => {
+  const requestedRows = syncBatchRowCountInput();
+  const { rowsAdded, limitReached } = addBatchRows(requestedRows);
+  if (limitReached) {
+    setResponseState(
+      batchResponsePanel,
+      batchResponseBadge,
+      batchResponseMessage,
+      false,
+      `Only ${rowsAdded} rows were added because the batch limit is ${MAX_BATCH_ROWS}.`
+    );
+    return;
+  }
+
+  resetResponseState(batchResponsePanel, batchResponseMessage);
+});
+
+batchClearButton.addEventListener("click", async () => {
+  const confirmed = await showConfirmModal({
+    title: "Clear current batch?",
+    message: "This will remove all current Multiple Devices rows and reset the form back to one empty row. Do you want to continue?",
+    confirmLabel: "Yes, clear",
+    cancelLabel: "No, stay here"
+  });
+
+  if (!confirmed) {
+    return;
+  }
+
+  resetBatchForm();
 });
 
 batchForm.addEventListener("reset", () => {
   resetBatchForm();
+});
+
+batchForm.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || !(event.target instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const row = event.target.closest(".batch-row");
+  if (!row) {
+    return;
+  }
+
+  if (event.target.name === "mac") {
+    event.preventDefault();
+    focusBatchInput(getBatchRowInputs(row).sn);
+    return;
+  }
+
+  if (event.target.name === "sn") {
+    event.preventDefault();
+    focusNextBatchMacInput(row);
+  }
 });
 
 async function submitBatchForm() {
@@ -2628,6 +2967,7 @@ async function submitBatchForm() {
     if (data.ok) {
       resetBatchForm({
         preserveSiteSelection: true,
+        preserveAutoModel: true,
         keepResponseMessage: true
       });
       await refreshSearchData();
@@ -2683,12 +3023,16 @@ batchUploadInput.addEventListener("change", async (event) => {
       throw new Error("The CSV file did not contain any device rows.");
     }
 
+    const visibleRows = importedRows.slice(0, MAX_BATCH_ROWS);
     batchRows.innerHTML = "";
-    importedRows.forEach((item) => {
+    visibleRows.forEach((item) => {
       batchRows.append(createBatchRow(item));
     });
     updateBatchReadyCount();
-    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, true, `${importedRows.length} rows loaded from CSV.`);
+    const message = importedRows.length > MAX_BATCH_ROWS
+      ? `${visibleRows.length} rows loaded from CSV. Extra rows were skipped because the batch limit is ${MAX_BATCH_ROWS}.`
+      : `${visibleRows.length} rows loaded from CSV.`;
+    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, true, message);
   } catch (error) {
     setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, error instanceof Error ? error.message : "CSV import failed.");
   } finally {

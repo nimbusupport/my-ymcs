@@ -162,24 +162,53 @@
 
             <div class="batch-toolbar-card">
               <div class="batch-toolbar-top">
-                <div class="field batch-site-field">
-                  <span>Batch Site</span>
-                  <div class="combo" id="batch-site-combo">
-                    <div class="combo-shell">
-                      <input id="batch-site-input" name="batchSiteInput" type="text" placeholder="Select one site for all devices" autocomplete="off" aria-expanded="false">
-                      <input id="selected-batch-site-id" name="selectedBatchSiteId" type="hidden">
-                      <button id="batch-site-toggle" class="combo-toggle" type="button" aria-label="Toggle batch site list"></button>
+                <div class="batch-toolbar-columns">
+                  <div class="batch-toolbar-column">
+                    <div class="field batch-site-field">
+                      <span>Batch Site</span>
+                      <div class="combo" id="batch-site-combo">
+                        <div class="combo-shell">
+                          <input id="batch-site-input" name="batchSiteInput" type="text" placeholder="Select one site for all devices" autocomplete="off" aria-expanded="false">
+                          <input id="selected-batch-site-id" name="selectedBatchSiteId" type="hidden">
+                          <button id="batch-site-toggle" class="combo-toggle" type="button" aria-label="Toggle batch site list"></button>
+                        </div>
+                        <div id="batch-site-menu" class="combo-menu hidden" role="listbox"></div>
+                      </div>
+                      <small id="batch-site-note" class="field-note">Every imported or manual row in this batch will be added to the selected site.</small>
                     </div>
-                    <div id="batch-site-menu" class="combo-menu hidden" role="listbox"></div>
+                    <div class="batch-actions batch-actions-site">
+                      <button id="batch-template-button" class="secondary-button" type="button">Download Template</button>
+                      <button id="batch-upload-button" class="secondary-button" type="button">Upload CSV</button>
+                      <input id="batch-upload-input" type="file" accept=".csv,text/csv" class="hidden">
+                      <button id="batch-add-row" class="secondary-button" type="button">Add Row</button>
+                    </div>
                   </div>
-                  <small id="batch-site-note" class="field-note">Every imported or manual row in this batch will be added to the selected site.</small>
-                </div>
-                <div class="batch-actions">
-                  <button id="batch-template-button" class="secondary-button" type="button">Download Template</button>
-                  <button id="batch-upload-button" class="secondary-button" type="button">Upload CSV</button>
-                  <input id="batch-upload-input" type="file" accept=".csv,text/csv" class="hidden">
-                  <button id="batch-add-row" class="secondary-button" type="button">Add Row</button>
-                  <button id="batch-save-button" class="primary-button" type="button">Save</button>
+                  <div class="batch-toolbar-column">
+                    <div class="field batch-model-auto-field">
+                      <span>Batch Model Auto</span>
+                      <div class="combo" id="batch-model-auto-combo">
+                        <div class="combo-shell">
+                          <input id="batch-model-auto-input" name="batchModelAutoInput" type="text" placeholder="Choose one model for new rows" autocomplete="off" aria-expanded="false">
+                          <input id="selected-batch-model-auto-id" name="selectedBatchModelAutoId" type="hidden">
+                          <button id="batch-model-auto-toggle" class="combo-toggle" type="button" aria-label="Toggle batch auto model list"></button>
+                        </div>
+                        <div id="batch-model-auto-menu" class="combo-menu hidden" role="listbox"></div>
+                      </div>
+                      <small class="field-note">When you choose a model here, new rows inherit it automatically and matching auto-filled rows stay in sync.</small>
+                    </div>
+                    <div class="batch-actions batch-actions-model">
+                      <div class="field batch-row-count-field">
+                        <span>Rows To Add</span>
+                        <div class="batch-row-count-control">
+                          <input id="batch-row-count" name="batchRowCount" type="number" min="1" max="100" value="1" inputmode="numeric">
+                          <button id="batch-add-many" class="secondary-button" type="button">Add Rows</button>
+                          <button id="batch-clear-button" class="secondary-button" type="button">Clear</button>
+                          <button id="batch-save-button" class="primary-button" type="button">Save</button>
+                        </div>
+                        <small class="field-note">Choose <code>1-100</code> rows. If the table is empty, the first blank row is reused automatically.</small>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
