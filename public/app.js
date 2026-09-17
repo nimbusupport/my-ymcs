@@ -3820,8 +3820,14 @@ deviceForm.addEventListener("submit", async (event) => {
       body: JSON.stringify(payload)
     });
     const data = await response.json();
-    const message = data.ok ? buildSuccessMessage(data) : (data.message || "Request failed.");
-    setResponseState(responsePanel, responseBadge, responseMessage, Boolean(data.ok), data.ok ? buildSuccessMessage(data) : message);
+    const requestSucceeded = Boolean(data.ok);
+    const message = requestSucceeded ? buildSuccessMessage(data) : (data.message || "Request failed.");
+
+    if (requestSucceeded) {
+      deviceForm.reset();
+    }
+
+    setResponseState(responsePanel, responseBadge, responseMessage, requestSucceeded, message);
     if (data.ok || data.deviceCreated) {
       await refreshSearchData();
     }
