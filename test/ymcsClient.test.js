@@ -358,5 +358,6 @@ test("extractYmcsMessage prefers structured message fields", () => {
   assert.equal(extractYmcsMessage({ message: "bad request" }), "bad request");
   assert.equal(extractYmcsMessage({ errors: [{ message: "first failure" }] }), "first failure");
   assert.equal(extractYmcsMessage({ errors: [{ field: "account-1", msg: "The resource does not exist or has been deleted" }] }), "The resource does not exist or has been deleted");
+  assert.equal(extractYmcsMessage({ data: { failureList: [{ message: "This Mac used by other site." }] } }), "This Mac used by other site.");
   assert.equal(extractYmcsMessage({ id: "abc123" }), "Device created successfully.");
 });

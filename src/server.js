@@ -13,9 +13,19 @@ import {
   listAccounts,
   listDevices,
   listModels,
-  listSites,
-  normalizeMac
+  listSites
 } from "./lib/ymcsClient.js";
+import {
+  getBatchFailureRows,
+  getBatchErrorEntries,
+  isBatchSuccessful,
+  mapBatchMessage,
+  summarizeBatchResult
+} from "./lib/ymcsBatchResult.js";
+import {
+  buildExistingDeviceConflictMessage,
+  findExistingDeviceConflicts
+} from "./lib/deviceConflicts.js";
 import {
   buildIpConfigLookupUrl,
   buildIpstackLookupUrl,
@@ -826,28 +836,6 @@ function applyUserSiteScopeToBatchPayload(body, user) {
   };
 }
 
-function mapBatchMessage(result) {
-  const successCount = Number(result?.payload?.successCount ?? 0);
-  const failureCount = Number(result?.payload?.failureCount ?? 0);
-  const total = Number(result?.payload?.total ?? result?.requestBody?.length ?? successCount + failureCount);
-  const errorDetails = getBatchErrorDetails(result?.payload);
-
-  if (total > 0 && failureCount === 0 && successCount === total) {
-    return `${successCount} devices created successfully.`;
-  }
-
-  if (successCount > 0 || failureCount > 0) {
-    const summary = `${successCount} devices created, ${failureCount} failed.`;
-    return errorDetails.length > 0 ? `${summary} YMCS: ${errorDetails.join(" | ")}` : summary;
-  }
-
-  if (errorDetails.length > 0) {
-    return `YMCS: ${errorDetails.join(" | ")}`;
-  }
-
-  return result?.message || "Batch request completed.";
-}
-
 function buildSipAccountSuccessMessage(result) {
   const payload = result?.payload || {};
   const username = String(payload.username || result?.requestBody?.username || "").trim();
@@ -1210,103 +1198,74 @@ async function addDeviceWithOptionalSipBinding(body, env) {
   };
 }
 
-function getBatchErrorDetails(payload) {
-  const rawErrors = Array.isArray(payload?.errors) ? payload.errors : [];
-
-  return rawErrors
-    .map((entry) => {
-      if (typeof entry === "string") {
-        return entry.trim();
-      }
-
-      if (!entry || typeof entry !== "object") {
-        return "";
-      }
-
-      const message = String(
-        entry.message
-        || entry.msg
-        || entry.error
-        || entry.errorMessage
-        || ""
-      ).trim();
-      const mac = String(entry.mac || entry.deviceMac || "").trim();
-      const serial = String(entry.sn || entry.serial || "").trim();
-      const rowIndex = Number.isInteger(entry.index) ? entry.index + 1 : null;
-      const context = [
-        rowIndex ? `row ${rowIndex}` : "",
-        mac ? `MAC ${mac}` : "",
-        serial ? `SN ${serial}` : ""
-      ].filter(Boolean).join(", ");
-
-      if (context && message) {
-        return `${context}: ${message}`;
-      }
-
-      return message || context;
-    })
-    .filter(Boolean);
+async function getExistingDeviceConflicts(devices, env) {
+  const existingDevices = await getYmcsDevices(env);
+  return findExistingDeviceConflicts(devices, existingDevices);
 }
 
-function getBatchFailureRows(result) {
-  const requestBody = Array.isArray(result?.requestBody) ? result.requestBody : [];
-  const rawErrors = Array.isArray(result?.payload?.errors) ? result.payload.errors : [];
-  const usedIndexes = new Set();
-
-  return rawErrors
-    .map((entry) => resolveBatchFailureRowIndex(entry, requestBody, usedIndexes))
-    .filter((index) => Number.isInteger(index));
-}
-
-function resolveBatchFailureRowIndex(entry, requestBody, usedIndexes) {
-  if (!entry || typeof entry !== "object") {
-    return null;
-  }
-
-  const directIndex = Number(entry.index);
-  if (Number.isInteger(directIndex) && directIndex >= 0 && directIndex < requestBody.length && !usedIndexes.has(directIndex)) {
-    usedIndexes.add(directIndex);
-    return directIndex;
-  }
-
-  const targetMac = normalizeMac(entry.mac || entry.deviceMac || "");
-  const targetSn = String(entry.sn || entry.serial || "").trim();
-
-  for (let index = 0; index < requestBody.length; index += 1) {
-    if (usedIndexes.has(index)) {
-      continue;
+function remapBatchErrorEntries(entries, keptIndexes) {
+  return entries.map((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return entry;
     }
 
-    const item = requestBody[index] || {};
-    const itemMac = normalizeMac(item.mac || "");
-    const itemSn = String(item.sn || "").trim();
-    const macMatches = targetMac ? itemMac === targetMac : true;
-    const snMatches = targetSn ? itemSn === targetSn : true;
-
-    if (macMatches && snMatches && (targetMac || targetSn)) {
-      usedIndexes.add(index);
-      return index;
+    const rawIndex = Number(entry.index);
+    if (!Number.isInteger(rawIndex) || rawIndex < 0 || rawIndex >= keptIndexes.length) {
+      return entry;
     }
-  }
 
-  return null;
+    return {
+      ...entry,
+      index: keptIndexes[rawIndex]
+    };
+  });
 }
 
-function isBatchSuccessful(result) {
-  if (!result?.ok) {
-    return false;
+async function addDevicesWithDuplicateGuard(body, env) {
+  const requestedDevices = Array.isArray(body?.devices) ? body.devices : [];
+  const conflicts = await getExistingDeviceConflicts(requestedDevices, env);
+
+  if (conflicts.length === 0) {
+    return addDevices(body, env);
   }
 
-  const successCount = Number(result?.payload?.successCount ?? 0);
-  const failureCount = Number(result?.payload?.failureCount ?? 0);
-  const total = Number(result?.payload?.total ?? result?.requestBody?.length ?? successCount + failureCount);
+  const blockedIndexes = new Set(conflicts.map((conflict) => conflict.index));
+  const keptIndexes = requestedDevices
+    .map((_, index) => index)
+    .filter((index) => !blockedIndexes.has(index));
+  const devicesToCreate = keptIndexes.map((index) => requestedDevices[index]);
+  const ymcsResult = devicesToCreate.length > 0
+    ? await addDevices({ ...body, devices: devicesToCreate }, env)
+    : null;
+  const ymcsSummary = ymcsResult ? summarizeBatchResult(ymcsResult) : {
+    successCount: 0,
+    failureCount: 0
+  };
+  const ymcsErrors = ymcsResult ? remapBatchErrorEntries(getBatchErrorEntries(ymcsResult.payload), keptIndexes) : [];
+  const duplicateErrors = conflicts.map((conflict) => ({
+    index: conflict.index,
+    mac: conflict.mac,
+    sn: conflict.sn,
+    message: buildExistingDeviceConflictMessage(conflict)
+  }));
 
-  if (total > 0) {
-    return failureCount === 0 && successCount === total;
-  }
-
-  return failureCount === 0;
+  return {
+    ok: ymcsResult ? ymcsResult.ok : false,
+    status: ymcsResult
+      ? ymcsResult.status
+      : 409,
+    statusText: ymcsResult?.statusText || "Conflict",
+    message: duplicateErrors[0]?.message || ymcsResult?.message || "Duplicate devices were blocked.",
+    payload: {
+      total: requestedDevices.length,
+      successCount: ymcsSummary.successCount,
+      failureCount: duplicateErrors.length + ymcsSummary.failureCount,
+      errors: [...duplicateErrors, ...ymcsErrors]
+    },
+    requestBody: requestedDevices
+  };
 }
+
 
 async function getYmcsDevices(env = process.env) {
   if (env === process.env && cachedDevices.expiresAt > Date.now() && cachedDevices.items.length > 0) {
@@ -1883,6 +1842,16 @@ async function handleRequest(req, res) {
       const user = getAuthUser(req);
       const scopedBody = applyUserSiteScopeToDevicePayload(await readJsonBody(req), user);
       const env = getYmcsEnvForUser(user);
+      const [existingConflict] = await getExistingDeviceConflicts([scopedBody], env);
+      if (existingConflict) {
+        sendJson(res, 409, {
+          ok: false,
+          message: buildExistingDeviceConflictMessage(existingConflict),
+          payload: null
+        });
+        return;
+      }
+
       const prepared = await prepareDeviceSiteAssignment(scopedBody, env, user);
       const result = await addDeviceWithOptionalSipBinding(prepared.body, env);
       cachedDevices = {
@@ -1940,7 +1909,7 @@ async function handleRequest(req, res) {
     try {
       const user = getAuthUser(req);
       const body = applyUserSiteScopeToBatchPayload(await readJsonBody(req), user);
-      const result = await addDevices(body, getYmcsEnvForUser(user));
+      const result = await addDevicesWithDuplicateGuard(body, getYmcsEnvForUser(user));
       cachedDevices = {
         expiresAt: 0,
         items: []

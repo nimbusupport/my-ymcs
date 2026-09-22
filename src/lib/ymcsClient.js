@@ -54,6 +54,34 @@ function parseYmcsPayload(rawText) {
   }
 }
 
+function getYmcsErrorEntries(payload) {
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const data = payload.data && typeof payload.data === "object" ? payload.data : null;
+  const candidates = [
+    payload.errors,
+    payload.errorList,
+    payload.failures,
+    payload.failureList,
+    payload.failedList,
+    data?.errors,
+    data?.errorList,
+    data?.failures,
+    data?.failureList,
+    data?.failedList
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate) && candidate.length > 0) {
+      return candidate;
+    }
+  }
+
+  return [];
+}
+
 function getRequestIdentity(options = {}) {
   return {
     timestamp: String(options.timestamp ?? Date.now()),
@@ -579,8 +607,9 @@ export function extractYmcsMessage(payload) {
     return payload.error.message;
   }
 
-  if (Array.isArray(payload.errors) && payload.errors.length > 0) {
-    const first = payload.errors[0];
+  const errorEntries = getYmcsErrorEntries(payload);
+  if (errorEntries.length > 0) {
+    const first = errorEntries[0];
     if (typeof first === "string") {
       return first;
     }

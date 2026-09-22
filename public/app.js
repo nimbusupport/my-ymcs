@@ -2018,7 +2018,7 @@ function applyModelSelectionToBatchRow(row, selection) {
     inputs.modelId.value = nextSelection.modelId;
   }
   hideBatchModelMenu(row);
-  syncBatchRowValidation(row);
+  validateBatchRows();
 }
 
 function hasBatchRowContent(row) {
@@ -2037,8 +2037,12 @@ function setBatchInputValidity(input, isInvalid) {
     return;
   }
 
-  void isInvalid;
-  input.classList.remove("batch-field-invalid");
+  input.classList.toggle("batch-field-invalid", Boolean(isInvalid));
+  if (isInvalid) {
+    input.setAttribute("aria-invalid", "true");
+    return;
+  }
+
   input.removeAttribute("aria-invalid");
 }
 
@@ -2049,7 +2053,39 @@ function clearBatchRowValidation(row) {
   setBatchInputValidity(inputs.sn, false);
 }
 
-function syncBatchRowValidation(row) {
+function getBatchDuplicateRowValues() {
+  const macCounts = new Map();
+  const serialCounts = new Map();
+
+  batchRows.querySelectorAll(".batch-row").forEach((row) => {
+    const inputs = getBatchRowInputs(row);
+    const normalizedMac = normalizeBatchMac(inputs.mac?.value);
+    const serialValue = String(inputs.sn?.value ?? "").trim().toLowerCase();
+
+    if (normalizedMac) {
+      macCounts.set(normalizedMac, (macCounts.get(normalizedMac) || 0) + 1);
+    }
+
+    if (serialValue) {
+      serialCounts.set(serialValue, (serialCounts.get(serialValue) || 0) + 1);
+    }
+  });
+
+  return {
+    macs: new Set(
+      Array.from(macCounts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([value]) => value)
+    ),
+    serials: new Set(
+      Array.from(serialCounts.entries())
+        .filter(([, count]) => count > 1)
+        .map(([value]) => value)
+    )
+  };
+}
+
+function syncBatchRowValidation(row, duplicates = { macs: new Set(), serials: new Set() }) {
   if (!row) {
     return { hasContent: false, valid: true };
   }
@@ -2064,28 +2100,35 @@ function syncBatchRowValidation(row) {
 
   const normalizedMac = normalizeBatchMac(inputs.mac?.value);
   const serialValue = inputs.sn?.value.trim() || "";
+  const normalizedSerial = serialValue.toLowerCase();
   const macInvalid = normalizedMac.length < 12 || normalizedMac.length > 17;
   const snInvalid = !serialValue || serialValue.length > 128;
-  const invalid = macInvalid || snInvalid;
+  const duplicateMac = Boolean(normalizedMac) && duplicates.macs.has(normalizedMac);
+  const duplicateSn = Boolean(normalizedSerial) && duplicates.serials.has(normalizedSerial);
+  const invalid = macInvalid || snInvalid || duplicateMac || duplicateSn;
 
   row.classList.toggle("batch-row-invalid", invalid);
-  setBatchInputValidity(inputs.mac, macInvalid);
-  setBatchInputValidity(inputs.sn, snInvalid);
+  setBatchInputValidity(inputs.mac, macInvalid || duplicateMac);
+  setBatchInputValidity(inputs.sn, snInvalid || duplicateSn);
 
   return {
     hasContent,
     valid: !invalid,
     macInvalid,
-    snInvalid
+    snInvalid,
+    duplicateMac,
+    duplicateSn
   };
 }
 
 function validateBatchRows() {
   const invalidRows = [];
+  const duplicateRows = [];
   let populatedRowCount = 0;
+  const duplicates = getBatchDuplicateRowValues();
 
   Array.from(batchRows.querySelectorAll(".batch-row")).forEach((row, index) => {
-    const validation = syncBatchRowValidation(row);
+    const validation = syncBatchRowValidation(row, duplicates);
     if (validation.hasContent) {
       populatedRowCount += 1;
     }
@@ -2093,11 +2136,16 @@ function validateBatchRows() {
     if (!validation.valid) {
       invalidRows.push(index + 1);
     }
+
+    if (validation.duplicateMac || validation.duplicateSn) {
+      duplicateRows.push(index + 1);
+    }
   });
 
   return {
     populatedRowCount,
-    invalidRows
+    invalidRows,
+    duplicateRows
   };
 }
 
@@ -2162,6 +2210,7 @@ function addBatchRows(count, options = {}) {
     createdRows.push(row);
   }
 
+  validateBatchRows();
   updateBatchReadyCount();
   return {
     createdRows,
@@ -2216,6 +2265,7 @@ function rebuildBatchRows(items = [], options = {}) {
     batchRows.append(row);
   });
 
+  validateBatchRows();
   updateBatchReadyCount();
 }
 
@@ -2275,11 +2325,11 @@ function createBatchRow(initialValues = {}) {
 
   bindBatchModelCombo(row);
   row.addEventListener("input", () => {
-    syncBatchRowValidation(row);
+    validateBatchRows();
     updateBatchReadyCount();
   });
   row.addEventListener("change", () => {
-    syncBatchRowValidation(row);
+    validateBatchRows();
     updateBatchReadyCount();
   });
   row.querySelector(".row-remove").addEventListener("click", () => {
@@ -2292,6 +2342,7 @@ function createBatchRow(initialValues = {}) {
     } else {
       row.remove();
     }
+    validateBatchRows();
     updateBatchReadyCount();
   });
 
@@ -3916,7 +3967,10 @@ async function submitBatchForm() {
     const rowLabel = validation.invalidRows.length === 1
       ? `row ${validation.invalidRows[0]}`
       : `rows ${validation.invalidRows.join(", ")}`;
-    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, `Fix the highlighted MAC or Serial fields on ${rowLabel} before saving.`);
+    const duplicateNote = validation.duplicateRows.length > 0
+      ? " Duplicate MAC or Serial values in the same batch are not allowed."
+      : "";
+    setResponseState(batchResponsePanel, batchResponseBadge, batchResponseMessage, false, `Fix the highlighted MAC or Serial fields on ${rowLabel} before saving.${duplicateNote}`);
     return;
   }
 
