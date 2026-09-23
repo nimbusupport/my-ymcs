@@ -59,6 +59,10 @@ const supabaseAnonKey = String(
   || ""
 ).trim();
 const adminEmail = String(process.env.ADMIN_EMAIL || "support@nimbusip.com").trim().toLowerCase();
+const siteCreationRestrictedEmails = new Set([
+  "yosef@nimbusip.com",
+  "mustafa.h@nimbusip.com"
+]);
 const userSiteScopeMap = parseUserSiteScopes(process.env.USER_SITE_SCOPES);
 const searchServerConfigs = parseSearchServers(process.env.YMCS_SEARCH_SERVERS);
 
@@ -314,6 +318,16 @@ function getUserSiteScope(email) {
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function isSiteCreationRestrictedUser(user) {
+  return siteCreationRestrictedEmails.has(normalizeEmail(user?.email));
+}
+
+function assertSiteCreationAllowed(user) {
+  if (isSiteCreationRestrictedUser(user)) {
+    throw new Error("This account cannot create sites.");
+  }
 }
 
 function buildAuthorizedUser(emailCandidates = [], authProvider = "supabase") {
@@ -973,6 +987,8 @@ function findSiteByNameUnderParent(sites, name, parentId) {
 }
 
 async function createOrReuseDeviceSite(createSiteName, env, user) {
+  assertSiteCreationAllowed(user);
+
   const sites = await getYmcsSites(env);
   const parentSite = findDeviceSiteParent(sites, user);
 
@@ -1678,6 +1694,7 @@ async function handleRequest(req, res) {
   if (req.method === "POST" && url.pathname === "/api/sites") {
     try {
       const user = getAuthUser(req);
+      assertSiteCreationAllowed(user);
       const body = await readJsonBody(req);
       const name = String(body?.name ?? "").trim();
 

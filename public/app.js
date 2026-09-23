@@ -179,6 +179,10 @@ const sipServer1HostInput = document.querySelector("#sip-server1-host");
 const sipServer1PortInput = document.querySelector("#sip-server1-port");
 const MAX_BATCH_ROWS = 100;
 const MAX_SIP_ACCOUNT_ROWS = 100;
+const siteCreationRestrictedEmails = new Set([
+  "yosef@nimbusip.com",
+  "mustafa.h@nimbusip.com"
+]);
 
 let modelItems = [];
 let siteItems = [];
@@ -1031,6 +1035,7 @@ function setAuthView(view) {
 
 function applySessionUser(user) {
   currentUser = user || null;
+  syncSiteCreationAccess();
 
   if (user?.email) {
     sessionUser.textContent = `${user.email} (${user.role || "admin"})`;
@@ -1052,6 +1057,28 @@ function getLockedSiteScope() {
 
 function isLockedSiteUser() {
   return Boolean(getLockedSiteScope());
+}
+
+function isSiteCreationRestrictedUser() {
+  const email = String(currentUser?.email || "").trim().toLowerCase();
+  return siteCreationRestrictedEmails.has(email);
+}
+
+function syncSiteCreationAccess() {
+  if (!siteCreateButton && !siteCreateNameInput) {
+    return;
+  }
+
+  const restricted = isSiteCreationRestrictedUser();
+  if (siteCreateButton) {
+    siteCreateButton.disabled = restricted;
+    siteCreateButton.title = restricted ? "This account cannot create sites." : "";
+  }
+
+  if (siteCreateNameInput) {
+    siteCreateNameInput.disabled = restricted;
+    siteCreateNameInput.title = restricted ? "This account cannot create sites." : "";
+  }
 }
 
 function setSiteControlState(input, hiddenInput, toggle, note, lockedSite) {
@@ -1087,7 +1114,9 @@ function applyLockedSiteScopeToInputs() {
     }
 
     if (deviceSiteCreateNote) {
-      deviceSiteCreateNote.textContent = "Optional. If filled, the app will create this child site under Nimbus and then add the device there.";
+      deviceSiteCreateNote.textContent = isSiteCreationRestrictedUser()
+        ? "This account cannot create sites."
+        : "Optional. If filled, the app will create this child site under Nimbus and then add the device there.";
     }
 
     if (batchSiteNote) {
@@ -1098,8 +1127,12 @@ function applyLockedSiteScopeToInputs() {
       sipAccountSiteNote.textContent = "Optional. Choose the YMCS site for this SIP account.";
     }
   } else if (deviceSiteCreateNote) {
-    deviceSiteCreateNote.textContent = `Optional. If filled, the app will create this child site under ${lockedSite.name} and then add the device there.`;
+    deviceSiteCreateNote.textContent = isSiteCreationRestrictedUser()
+      ? "This account cannot create sites."
+      : `Optional. If filled, the app will create this child site under ${lockedSite.name} and then add the device there.`;
   }
+
+  syncSiteCreationAccess();
 }
 
 function activateView(view) {
@@ -3386,6 +3419,18 @@ accountsRefreshButton.addEventListener("click", async () => {
 });
 
 siteCreateButton?.addEventListener("click", async () => {
+  if (isSiteCreationRestrictedUser()) {
+    setResponseState(
+      siteCreateResponsePanel,
+      siteCreateResponseBadge,
+      siteCreateResponseMessage,
+      false,
+      "This account cannot create sites."
+    );
+    syncSiteCreationAccess();
+    return;
+  }
+
   const name = siteCreateNameInput?.value.trim() || "";
 
   if (!name) {
@@ -3446,7 +3491,7 @@ siteCreateButton?.addEventListener("click", async () => {
         : "Site creation failed. If the server was already running, restart it so the new /api/sites route is available."
     );
   } finally {
-    siteCreateButton.disabled = false;
+    syncSiteCreationAccess();
     siteCreateButton.textContent = "Create";
   }
 });
