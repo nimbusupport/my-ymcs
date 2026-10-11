@@ -326,6 +326,39 @@ test("buildBindAccountsRequest targets YMCS device account binding endpoint", ()
   assert.equal(request.headers.Authorization, "Bearer token-789");
 });
 
+test("buildBindAccountsRequest preserves multiple account line bindings", () => {
+  const request = buildBindAccountsRequest(
+    {
+      deviceId: "device-1",
+      accounts: [{
+        lineId: 1,
+        accountType: 0,
+        accountId: "account-1"
+      }, {
+        lineId: 2,
+        accountType: 0,
+        accountId: "account-2"
+      }]
+    },
+    sampleEnv,
+    {
+      accessToken: "token-789",
+      timestamp: 1730000000000,
+      nonce: "nonce-123"
+    }
+  );
+
+  assert.deepEqual(request.body, [{
+    lineId: 1,
+    accountType: 0,
+    accountId: "account-1"
+  }, {
+    lineId: 2,
+    accountType: 0,
+    accountId: "account-2"
+  }]);
+});
+
 test("buildBindAccountsRequest can still send wrapped account payloads", () => {
   const request = buildBindAccountsRequest(
     {

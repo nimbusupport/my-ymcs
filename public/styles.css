@@ -1536,18 +1536,58 @@ button {
   gap: 8px;
 }
 
-.device-account-row {
+.device-account-toolbar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   gap: 12px;
   align-items: center;
 }
 
-.device-account-row .combo {
+.device-account-toolbar .secondary-button,
+.device-account-toolbar .primary-button {
+  white-space: nowrap;
+}
+
+.device-account-rows {
+  display: grid;
+  gap: 12px;
+}
+
+.device-account-bind-row {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  background: #fbfcff;
+}
+
+.device-account-bind-grid {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.device-account-line-label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid var(--line-strong);
+  background: #fff;
+  color: var(--ink);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.device-account-bind-row .combo {
   min-width: 0;
 }
 
-.device-account-row .primary-button {
+.device-account-bind-row .secondary-button {
   white-space: nowrap;
 }
 
@@ -2404,9 +2444,13 @@ input[readonly] {
     grid-template-columns: 84px repeat(3, minmax(88px, 1fr));
   }
 
-  .device-account-row,
+  .device-account-toolbar,
   .accounts-toolbar,
   .sip-account-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .device-account-bind-grid {
     grid-template-columns: 1fr;
   }
 
@@ -2414,7 +2458,7 @@ input[readonly] {
     grid-template-columns: 1fr;
   }
 
-  .device-account-row,
+  .device-account-toolbar,
   .accounts-toolbar {
     display: grid;
   }

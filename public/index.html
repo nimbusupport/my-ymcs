@@ -596,19 +596,13 @@
             </div>
 
             <div class="field">
-              <span>SIP Account</span>
-              <div class="device-account-row">
-                <div class="combo" id="device-account-combo">
-                  <div class="combo-shell">
-                    <input id="device-account-input" name="deviceAccountInput" type="text" placeholder="Choose an existing SIP account to bind" autocomplete="off" aria-expanded="false">
-                    <input id="selected-device-account-id" name="selectedDeviceAccountId" type="hidden">
-                    <button id="device-account-toggle" class="combo-toggle" type="button" aria-label="Toggle SIP account list"></button>
-                  </div>
-                  <div id="device-account-menu" class="combo-menu hidden" role="listbox"></div>
-                </div>
-                <button id="device-account-add-button" class="primary-button" type="button">SIP Account</button>
+              <span>SIP Accounts</span>
+              <div class="device-account-toolbar">
+                <button id="device-account-row-add-button" class="secondary-button" type="button">+ Add Account Line</button>
+                <button id="device-account-add-button" class="primary-button" type="button">+ SIP Account</button>
               </div>
-              <small id="device-account-note" class="field-note">Optional. The selected SIP account will bind to line <code>1</code> after the device is created.</small>
+              <div id="device-account-rows" class="device-account-rows" aria-live="polite"></div>
+              <small id="device-account-note" class="field-note">Optional. Bind up to <code>10</code> SIP accounts. Account <code>1</code> is the default line after the device is created.</small>
             </div>
 
             <details class="advanced">
@@ -707,7 +701,7 @@
           <div class="insight-card">
             <span class="eyebrow">Binding Flow</span>
             <strong>Device save can bind line 1</strong>
-            <p>When you pick a SIP account on the Device page, the account is bound after YMCS creates the device.</p>
+            <p>When you pick one or more SIP accounts on the Device page, each account is bound after YMCS creates the device.</p>
           </div>
         </section>
 

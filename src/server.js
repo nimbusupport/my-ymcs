@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import crypto from "crypto";
 import http from "http";
+import { readFileSync } from "fs";
 import { readFile } from "fs/promises";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -41,24 +42,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const publicDir = path.join(__dirname, "..", "public");
 const imageDir = path.join(__dirname, "..", "image");
+const envFilePath = path.join(__dirname, "..", ".env");
 const port = Number(process.env.PORT || 3000);
 const sessionTtlMs = Number(process.env.SESSION_TTL_MS || 30 * 24 * 60 * 60 * 1000);
 const sessionCookieName = "ymcs_admin_session";
-const supabaseUrl = String(
-  process.env.SUPABASE_URL
-  || process.env.VITE_SUPABASE_URL
-  || process.env.NEXT_PUBLIC_SUPABASE_URL
-  || ""
-).trim().replace(/\/+$/, "");
-const supabaseAnonKey = String(
-  process.env.SUPABASE_ANON_KEY
-  || process.env.VITE_SUPABASE_ANON_KEY
-  || process.env.SUPABASE_PUBLISHABLE_KEY
-  || process.env.VITE_SUPABASE_PUBLISHABLE_KEY
-  || process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-  || ""
-).trim();
-const adminEmail = String(process.env.ADMIN_EMAIL || "support@nimbusip.com").trim().toLowerCase();
 const siteCreationRestrictedEmails = new Set([
   "yosef@nimbusip.com",
   "mustafa.h@nimbusip.com"
@@ -263,7 +250,7 @@ function signSessionPayload(payload) {
 function createSessionCookieValue(user) {
   const payload = JSON.stringify({
     email: String(user?.email || "").trim().toLowerCase(),
-    authProvider: String(user?.authProvider || "supabase").trim(),
+    authProvider: String(user?.authProvider || "env").trim(),
     exp: Date.now() + sessionTtlMs
   });
   const encodedPayload = toBase64Url(payload);
@@ -312,12 +299,88 @@ function getAuthUser(req) {
   return getUserFromSessionCookie(req);
 }
 
+function readCurrentEnvFile() {
+  try {
+    return dotenv.parse(readFileSync(envFilePath));
+  } catch {
+    return {};
+  }
+}
+
+function getCurrentEnvValue(key, fallback = "") {
+  const parsed = readCurrentEnvFile();
+  const value = parsed[key];
+  if (typeof value === "string" && value.length > 0) {
+    return value;
+  }
+
+  const runtimeValue = process.env[key];
+  if (typeof runtimeValue === "string" && runtimeValue.length > 0) {
+    return runtimeValue;
+  }
+
+  return fallback;
+}
+
 function getUserSiteScope(email) {
-  return userSiteScopeMap.get(String(email || "").trim().toLowerCase()) || null;
+  const dynamicMap = parseUserSiteScopes(getCurrentEnvValue("USER_SITE_SCOPES", process.env.USER_SITE_SCOPES || ""));
+  return dynamicMap.get(String(email || "").trim().toLowerCase()) || userSiteScopeMap.get(String(email || "").trim().toLowerCase()) || null;
 }
 
 function normalizeEmail(email) {
   return String(email || "").trim().toLowerCase();
+}
+
+function getAdminEmail() {
+  return normalizeEmail(getCurrentEnvValue("ADMIN_EMAIL", "support@nimbusip.com"));
+}
+
+function getAdminPassword() {
+  return getCurrentEnvValue("ADMIN_PASSWORD", "");
+}
+
+function getContractorPassword() {
+  return getCurrentEnvValue("USER_CONTRACTORS_PASSWORD", "");
+}
+
+function getContractorCredentials() {
+  const credentials = new Map();
+  const rawEntries = String(getCurrentEnvValue("USER_CONTRACTORS", ""))
+    .split(",")
+    .map((entry) => String(entry || "").trim())
+    .filter(Boolean);
+
+  for (const entry of rawEntries) {
+    const [emailPart, ...passwordParts] = entry.split("|");
+    const email = normalizeEmail(emailPart);
+    const password = passwordParts.join("|").trim();
+
+    if (!email) {
+      continue;
+    }
+
+    credentials.set(email, {
+      email,
+      password
+    });
+  }
+
+  return credentials;
+}
+
+function areSecretsEqual(expected, actual) {
+  const expectedBuffer = Buffer.from(String(expected || ""), "utf8");
+  const actualBuffer = Buffer.from(String(actual || ""), "utf8");
+
+  if (expectedBuffer.length === 0 || expectedBuffer.length !== actualBuffer.length) {
+    return false;
+  }
+
+  return crypto.timingSafeEqual(expectedBuffer, actualBuffer);
+}
+
+function isContractorEmail(email) {
+  return getContractorCredentials().has(normalizeEmail(email));
 }
 
 function isSiteCreationRestrictedUser(user) {
@@ -330,7 +393,8 @@ function assertSiteCreationAllowed(user) {
   }
 }
 
-function buildAuthorizedUser(emailCandidates = [], authProvider = "supabase") {
+function buildAuthorizedUser(emailCandidates = [], authProvider = "env") {
+  const adminEmail = getAdminEmail();
   const candidates = Array.from(new Set(
     emailCandidates
       .map((email) => normalizeEmail(email))
@@ -339,17 +403,58 @@ function buildAuthorizedUser(emailCandidates = [], authProvider = "supabase") {
 
   for (const email of candidates) {
     const userSiteScope = getUserSiteScope(email);
-    if (email === adminEmail || userSiteScope) {
+    if (email === adminEmail || isContractorEmail(email) || userSiteScope) {
       return {
         email,
         role: email === adminEmail ? "admin" : "worker",
-        authProvider: String(authProvider || "supabase").trim(),
+        authProvider: String(authProvider || "env").trim(),
         siteScope: userSiteScope
       };
     }
   }
 
   return null;
+}
+
+function authenticateEnvUser(email, password) {
+  const normalizedEmail = normalizeEmail(email);
+  const adminEmail = getAdminEmail();
+  const adminPassword = getAdminPassword();
+  const sharedContractorPassword = getContractorPassword();
+  const contractorCredential = getContractorCredentials().get(normalizedEmail) || null;
+
+  if (normalizedEmail === adminEmail) {
+    if (!adminPassword) {
+      throw new Error("Missing ADMIN_PASSWORD in .env.");
+    }
+
+    if (!areSecretsEqual(adminPassword, password)) {
+      throw new Error("Invalid email or password.");
+    }
+
+    return buildAuthorizedUser([normalizedEmail], "env");
+  }
+
+  if (contractorCredential) {
+    const expectedPassword = contractorCredential.password || sharedContractorPassword;
+
+    if (!expectedPassword) {
+      throw new Error(`Missing password for contractor ${normalizedEmail} in USER_CONTRACTORS or USER_CONTRACTORS_PASSWORD.`);
+    }
+
+    if (!areSecretsEqual(expectedPassword, password)) {
+      throw new Error("Invalid email or password.");
+    }
+
+    const user = buildAuthorizedUser([normalizedEmail], "env");
+    if (!user?.siteScope) {
+      throw new Error(`Contractor ${normalizedEmail} is missing a USER_SITE_SCOPES entry.`);
+    }
+
+    return user;
+  }
+
+  throw new Error(`This account is not allowed for this app. Signed in as ${normalizedEmail}.`);
 }
 
 function getAvailableSearchServers(user) {
@@ -410,31 +515,6 @@ function requireAuth(req, res) {
   }
 
   return user;
-}
-
-async function signInWithSupabase(email, password) {
-  if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error("Supabase environment variables are missing. Add SUPABASE_URL or NEXT_PUBLIC_SUPABASE_URL, plus SUPABASE_ANON_KEY, SUPABASE_PUBLISHABLE_KEY, or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY to .env.");
-  }
-
-  const response = await fetch(`${supabaseUrl}/auth/v1/token?grant_type=password`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      apikey: supabaseAnonKey
-    },
-    body: JSON.stringify({
-      email,
-      password
-    })
-  });
-
-  const data = await response.json().catch(() => ({}));
-  if (!response.ok) {
-    throw new Error(data?.msg || data?.error_description || data?.message || "Supabase login failed.");
-  }
-
-  return data;
 }
 
 function canonicalizeModelText(value) {
@@ -1166,8 +1246,25 @@ async function addDeviceWithOptionalSipBinding(body, env) {
     return result;
   }
 
-  const accountId = String(body?.sipBinding?.accountId ?? "").trim();
-  if (!accountId) {
+  const bindings = Array.isArray(body?.sipBindings)
+    ? body.sipBindings
+    : (body?.sipBinding ? [body.sipBinding] : []);
+  const accounts = bindings
+    .map((binding, index) => {
+      const accountId = String(binding?.accountId ?? "").trim();
+      if (!accountId) {
+        return null;
+      }
+
+      return {
+        accountId,
+        lineId: Number(binding?.lineId ?? index + 1),
+        accountType: Number(binding?.accountType ?? 0)
+      };
+    })
+    .filter(Boolean);
+
+  if (accounts.length === 0) {
     return {
       ...result,
       message: result.message || "Device created successfully.",
@@ -1189,17 +1286,13 @@ async function addDeviceWithOptionalSipBinding(body, env) {
 
   const bindResult = await bindAccountsToDeviceWithRetry({
     deviceId,
-    accounts: [{
-      accountId,
-      lineId: Number(body?.sipBinding?.lineId ?? 1),
-      accountType: Number(body?.sipBinding?.accountType ?? 0)
-    }]
+    accounts
   }, env);
 
   if (isBindAccountsSuccessful(bindResult)) {
     return {
       ...result,
-      message: `${result.message || "Device created successfully."} SIP account bound successfully.`,
+      message: `${result.message || "Device created successfully."} ${accounts.length === 1 ? "SIP account bound successfully." : `${accounts.length} SIP accounts bound successfully.`}`,
       deviceCreated: true,
       bindResult
     };
@@ -1600,18 +1693,7 @@ async function handleRequest(req, res) {
         return;
       }
 
-      const authResult = await signInWithSupabase(email, password);
-      const providerEmail = normalizeEmail(authResult?.user?.email);
-      const user = buildAuthorizedUser([providerEmail, email], "supabase");
-
-      if (!user) {
-        const recognizedEmail = providerEmail || email;
-        sendJson(res, 403, {
-          ok: false,
-          message: `This account is not allowed for this app. Signed in as ${recognizedEmail}.`
-        });
-        return;
-      }
+      const user = authenticateEnvUser(email, password);
 
       const cookie = createCookie(
         sessionCookieName,
